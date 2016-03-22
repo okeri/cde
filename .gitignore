@@ -1,0 +1,4 @@
+*.o
+.prj
+Makefile
+cde
