@@ -411,15 +411,13 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         args.push_back("-detailed-preprocessing-record");
         currentUnit_->copyArgsToClangArgs(&args);
 
-        // We are not sure about language, so appending gcc system include
+        // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
         if (!currentUnit_->haveNostdinc()) {
-            //            cout << "(message \" inserting ";
             const unordered_set<string> &gcc_includes = gccSupport::includes();
             for (const auto &i : gcc_includes) {
                 args.push_back(i.c_str());
             }
-            //            cout << "\")" << endl;
         }
 
         args.push_back(info->first.c_str());

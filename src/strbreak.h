@@ -21,21 +21,21 @@
 
 template <typename Pred>
 void strBreak(const std::string inp, Pred handler, const size_t start = 0,
-              const size_t end = std::string::npos) {
-    size_t tail = 0, len = end == std::string::npos ? inp.length() : end,
-            head = len;
-    for (; tail <= len; tail++) {
+              const size_t endpoint = std::string::npos) {
+    size_t tail = start, end = endpoint == std::string::npos ?
+            inp.length() : endpoint, head = end;
+    for (; tail <= end; ++tail) {
         if (isgraph(inp[tail])) {
-            if (head == len) {
+            if (head == end) {
                 head = tail;
             }
         } else {
-            if (head != len) {
-                size_t nlen = tail - head;
-                if (!handler(inp.c_str() + head, nlen)) {
+            if (head != end) {
+                size_t len = tail - head;
+                if (!handler(inp.c_str() + head, len)) {
                     return;
                 }
-                head = len;
+                head = end;
             }
         }
     }

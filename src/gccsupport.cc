@@ -27,31 +27,34 @@ gccSupport& gccSupport::inst() {
 }
 
 void gccSupport::init(const std::string &path) {
-    std::string cmd = path + " -v -E -x c++ /dev/null";
+    std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
 
     FILE *pipe = popen(cmd.c_str(), "r");
     if (pipe) {
         char buffer[0xfff];
         std::string result;
-        while (!feof(pipe)) {
-            if (fgets(buffer, sizeof(buffer), pipe))
+        while (fgets(buffer, sizeof(buffer), pipe)) {
                 result += buffer;
         }
         size_t start = result.find("#include <...> search starts here:");
         if (start != std::string::npos) {
-            size_t end = result.find("End of search list.");
+            start += 34;  // lengh of start string
+            size_t end = result.find("End of search list.", start);
             if (end != std::string::npos) {
                 std::unordered_set<std::string> &includes = inst().includes_;
-                strBreak(result, [&includes, start, end]
+                strBreak(result, [&includes]
                          (const char* head, size_t len) {
-                             includes.emplace(head, len);
-                        return true;
-                    });
+                             includes.emplace(std::string("-I") +
+                                              std::string(head, len));
+                             return true;
+                         }, start, end);
             } else {
-                std::cout << "(message \"gcc returned garbage\")" << std::endl;
+                std::cout << "(message \"" << path
+                          << " returned garbage\")" << std::endl;
             }
         } else {
-            std::cout << "(message \"gcc returned garbage\")" << std::endl;
+            std::cout << "(message \"" << path
+                      << " returned garbage\")" << std::endl;
         }
         pclose(pipe);
     } else {
