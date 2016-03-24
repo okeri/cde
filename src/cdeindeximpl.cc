@@ -20,6 +20,7 @@
 #include <iomanip>
 
 #include <llvm/Support/CrashRecoveryContext.h>
+#include <llvm/Config/llvm-config.h>
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/Basic/DiagnosticOptions.h>
@@ -157,8 +158,9 @@ class CiConsumer : public CodeCompleteConsumer {
                             cout << "(funcall cde--callback (list ";
                             hasFilteredResults = true;
                         }
-                        // TODO: investigate the ways to speed up showing completions in emacs
-                        // may be pack completions here and unpack in emacs will work faster ?
+                        // TODO: investigate the ways to speed up showing
+                        // completions in emacs. may be pack completions here
+                        // and unpack in emacs will work faster ?
                         cout << "(propertize \"" << entry
                              << "\" 'anno " << "\"";
                         bool started = false;
@@ -184,7 +186,8 @@ class CiConsumer : public CodeCompleteConsumer {
                             if (started) {
                                 if (it->Kind !=
                                     CodeCompletionString::CK_VerticalSpace &&
-                                    it->Kind != CodeCompletionString::CK_Optional) {
+                                    it->Kind !=
+                                    CodeCompletionString::CK_Optional) {
                                     cout << it->Text;
                                 }
                             }
@@ -227,25 +230,30 @@ CDEIndexImpl::~CDEIndexImpl() {
     }
 }
 
+
 CDEIndex *createIndex(const string& projectPath, const string& storePath,
                      bool pch) {
     return new CDEIndexImpl(projectPath, storePath, pch);
 }
+
 
 bool CDEIndexImpl::VisitDeclRefExpr(DeclRefExpr *e) {
     record(e->getLocation(), e->getDecl());
     return true;
 }
 
+
 bool CDEIndexImpl::VisitCXXConstructExpr(CXXConstructExpr *e) {
     record(e->getLocation(), e->getConstructor());
     return true;
 }
 
+
 bool CDEIndexImpl::VisitMemberExpr(MemberExpr *e) {
     record(e->getMemberLoc(), e->getMemberDecl()->getCanonicalDecl());
     return true;
 }
+
 
 void CDEIndexImpl::record(const SourceLocation &locRef,
                          const SourceLocation &locDef,
@@ -267,6 +275,7 @@ void CDEIndexImpl::record(const SourceLocation &locRef,
          }
     }
 }
+
 
 bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
     const TagTypeLoc &tag = tl.getAs<TagTypeLoc>();
@@ -299,6 +308,7 @@ bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
     }
     return true;
 }
+
 
 bool CDEIndexImpl::VisitDecl(Decl *declaration) {
     const Decl *definition = nullptr;
@@ -409,21 +419,38 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
     } else {
         vector<const char *> args;
         args.reserve(16);
+
         args.push_back("-Xclang");
+        //        args.push_back("-c");
         args.push_back("-detailed-preprocessing-record");
         currentUnit_->copyArgsToClangArgs(&args);
 
+        bool nostdinc = currentUnit_->haveNostdinc();
+        if (!nostdinc) {
+            // clang includes
+            args.push_back("-isystem");
+            string clangInc("");
+            clangInc += LLVM_PREFIX;
+            clangInc += "/lib/clang/";
+            clangInc += CLANG_VERSION_STRING;
+            clangInc += "/include";
+            args.push_back(clangInc.c_str());
+        }
+
+
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
-        if (!currentUnit_->haveNostdinc()) {
+        if (!nostdinc) {
             const unordered_set<string> &gcc_includes = gccSupport::includes();
             for (const auto &i : gcc_includes) {
                 args.push_back(i.c_str());
             }
         }
-
         args.push_back(info->first.c_str());
 
+        // for (auto s : args) {
+        //     cout << s << endl;
+        // }
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));

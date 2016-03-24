@@ -85,16 +85,15 @@ struct CI_KEY {
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
-    string args_;
+    vector<string> args_;
     const SourceInfo *parent_;
 
-    template <typename Pred>
-    void enumArgs(Pred argHandler) const {
+    inline const vector<string> &args() const {
         const SourceInfo *token = this;
         while (token->parent_ != nullptr && token->args_.empty()) {
             token  = token->parent_;
         }
-        strBreak(token->args_, argHandler);
+        return token->args_;
     }
 
   public:
@@ -114,15 +113,11 @@ class SourceInfo {
     }
 
     inline void setArgs(const string& args) {
-        args_ = args;
-    }
-
-    inline const string& args() const {
-        const SourceInfo *token = this;
-        while (token->parent_ != nullptr && token->args_.empty()) {
-            token  = token->parent_;
-        }
-        return token->args_;
+        args_.resize(0);
+        strBreak(args, [this] (const char* head, size_t len) {
+                args_.emplace_back(head,len);
+                return true;
+            });
     }
 
     uint32_t fillPack(const string& filename, void *pack) const {
@@ -144,46 +139,29 @@ class SourceInfo {
     }
 
     bool haveNostdinc() const {
-        bool ret = false;
-        enumArgs([&ret](const char* head, size_t len) {
-                if (!strcmp(head, "-nostdinc")) {
-                    ret = true;
-                    return false;
-                }
+        const vector<string> &arguments = args();
+        for (const auto &s : arguments) {
+            if (s == "-nostdinc") {
                 return true;
-            });
-        return ret;
+            }
+        }
+        return false;
     }
+
     void fillIncludes(unordered_set<string> *includes) const {
-        enumArgs([includes](const char* head, size_t len) {
-                if (len > 2 && head[0] == '-' &&
-                    head[1] == 'I') {
-                    includes->emplace(head + 2,
-                                          len - 2);
-                    }
-                return true;
-            });
+        const vector<string> &arguments = args();
+        for (const auto &s : arguments) {
+            if (s.length() > 2 && s[0] == '-' && s[1]=='I') {
+                includes->emplace(s.c_str() + 2, s.length() - 2);
+            }
+        }
     }
 
-    void argsToLispStdout() const {
-        cout << "'(";
-        enumArgs([](const char* head, size_t len) {
-                cout << "\"";
-                cout.write(head, len);
-                cout << "\" ";
-                return true;
-            });
-        cout << ")";
-    }
-
-    void copyArgsToClangArgs(vector<const char*> *args) const {
-        enumArgs([args](const char* head, size_t len) {
-                char *arg = new char[len + 1];
-                strncpy(arg, head, len);
-                arg[len] = 0;
-                args->push_back(arg);
-                return true;
-            });
+    void copyArgsToClangArgs(vector<const char*> *clang_args) const {
+        const vector<string> &arguments = args();
+        for (const auto &s : arguments) {
+            clang_args->push_back(s.c_str());
+        }
     }
 };
 

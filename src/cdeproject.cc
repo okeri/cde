@@ -99,10 +99,8 @@ void CDEProject::updateProjectFile(const SourceIter &si,
                                       size_t unsavedSize) {
     string unsaved;
     readFromStdIn(unsavedSize, &unsaved);
-    if (index_->parse(si, unsaved, false)) {
-        // cout << "(message \"" << filename << " reparsed\")" << endl;
-    } else {
-        cout << "(message \"error: parsing" << si->first << " failed. "
+    if (!index_->parse(si, unsaved, false)) {
+        cout << "(message \"error: parsing " << si->first << " failed "
                 "with fatal error\")" << endl;
     }
 }
