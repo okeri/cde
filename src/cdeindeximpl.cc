@@ -129,7 +129,7 @@ class CiConsumer : public CodeCompleteConsumer {
                                     unsigned numResults) override {
         if (!numResults || diag->hasErrorOccurred() ||
             diag->hasFatalErrorOccurred()) {
-            cout << "(funcall cde-callback '())" << endl;
+            cout << "(funcall cde--callback '())" << endl;
             return;
         }
 
@@ -154,9 +154,11 @@ class CiConsumer : public CodeCompleteConsumer {
                     if (prefix_ == "" || !strncmp(prefix_.c_str(), entry.c_str(),
                                                   prefix_.length())) {
                         if (!hasFilteredResults) {
-                            cout << "(funcall cde-callback (list ";
+                            cout << "(funcall cde--callback (list ";
                             hasFilteredResults = true;
                         }
+                        // TODO: investigate the ways to speed up showing completions in emacs
+                        // may be pack completions here and unpack in emacs will work faster ?
                         cout << "(propertize \"" << entry
                              << "\" 'anno " << "\"";
                         bool started = false;
@@ -198,7 +200,7 @@ class CiConsumer : public CodeCompleteConsumer {
             }
         }
         if (!hasFilteredResults) {
-            cout << "(funcall cde-callback '(";
+            cout << "(funcall cde--callback '(";
         }
         cout << "))" << endl;
     }

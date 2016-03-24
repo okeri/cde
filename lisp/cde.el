@@ -20,101 +20,64 @@
 ;; user variables
 (defvar cde-args ""
   "Additional arguments could be passed to cde,
-for example: 'cde -C/tmp/cde/' changes cde cache dir.
+for example:
+  'cde -C/tmp/cde' changes cde cache dir.
+
 other switches:
- -P - enables PCH cache
- -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
+  -P - enables PCH cache
+  -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
 ;; variables
-(defvar cde-ring '())
-(defvar cde-ref-window nil)
-(defvar cde-process nil)
-(defvar-local cde-project nil)
-(defvar-local cde-callback nil)
-(defconst cde-process-buffer " *Cde*")
-(defconst cde-process-name "cde-process")
-(defconst cde-include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
+(defvar cde--ring '())
+(defvar cde--ref-window nil)
+(defvar cde--process nil)
+(defvar-local cde--project nil)
+(defvar-local cde--callback nil)
+(defconst cde--process-buffer " *Cde*")
+(defconst cde--process-name "cde-process")
+(defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
 
 (add-to-list 'kill-emacs-query-functions 'cde-try-quit)
 
-(defun cde-sympos()
-  (let ((bounds (bounds-of-thing-at-point 'symbol)))
-    (if bounds (car bounds) nil)))
-
-(defun cde-sympos-string()
-  (let ((bounds (bounds-of-thing-at-point 'symbol)))
-    (if bounds
-	(int-to-string (car bounds)) nil)))
-
-(defun cde-buffer-size()
-  (int-to-string (- (point-max) (point-min))))
-
-;; TODO: will we need this function ?
-(defun cde-update-project-file()
-  (interactive)
-  (when cde-project
-    (cde-send-command (concat "U " (cde-project) " "
-				 buffer-file-name "\n"))))
-
+;; public functions
 (defun cde-update-project()
   (interactive)
-  (when cde-project
-    (cde-send-command (concat "U " cde-project "\n"))))
+  (when cde--project
+    (cde--send-command (concat "U " cde--project "\n"))))
+
 
 (defun cde-header-source()
-    (interactive)
-    (when cde-project
-      (cde-send-command (concat "F " cde-project " "
-				   buffer-file-name "\n"))))
+  (interactive)
+  (when cde--project
+    (cde--send-command (concat "F " cde--project " "
+			       buffer-file-name "\n"))))
+
 (defun cde-symbol-def()
   (interactive)
-  (when cde-project
+  (when cde--project
     (let ((line (buffer-substring-no-properties
 		 (line-beginning-position) (line-end-position))))
-      (if (string-match cde-include-re line)
-	  (cde-send-command (concat "F " cde-project " "
+      (if (string-match cde--include-re line)
+	  (cde--send-command (concat "F " cde--project " "
 				       buffer-file-name " "
 				       (match-string 1 line) "\n"))
 	(if (buffer-modified-p)
-	    (cde-send-command (concat "D " cde-project " "
-					 buffer-file-name " " (cde-sympos-string)
-					 " " (cde-buffer-size) "\n"
+	    (cde--send-command (concat "D " cde--project " "
+					 buffer-file-name " " (cde--sympos-string)
+					 " " (cde--buffer-size) "\n"
 					 (buffer-string)))
-	  (cde-send-command (concat "D " cde-project " " buffer-file-name
-				       " " (cde-sympos-string) "\n")))))))
+	  (cde--send-command (concat "D " cde--project " " buffer-file-name
+				       " " (cde--sympos-string) "\n")))))))
 
 (defun cde-symbol-ref()
   (interactive)
-  (when cde-project
+  (when cde--project
     (if (buffer-modified-p)
-	(cde-send-command (concat "R " cde-project " " buffer-file-name " "
-				     (cde-sympos-string) " " (cde-buffer-size)
+	(cde--send-command (concat "R " cde--project " " buffer-file-name " "
+				     (cde--sympos-string) " " (cde--buffer-size)
 				     "\n" (buffer-string)))
-      (cde-send-command (concat "R " cde-project " " buffer-file-name " "
-				   (cde-sympos-string) "\n")))))
-
-
-(defun cde-ref-setup(items)
-  (let ((refbuf (get-buffer-create "references")))
-    (when (not (window-live-p cde-ref-window))
-      (delete-other-windows)
-
-      (setq cde-ref-window (split-window-right))
-      (set-window-buffer cde-ref-window refbuf)
-
-    (select-window cde-ref-window))
-
-    (with-current-buffer refbuf
-      (setq-local buffer-read-only nil)
-      (erase-buffer)
-      (dolist (item items)
-	(if (listp item)
-	    (insert (propertize (format "%5d|" (car item)) 'face 'linum) "\t"
-		    (nth 1 item) "\n")
-	  (insert (propertize item 'face 'font-lock-type-face) "\n")))
-      (setq-local buffer-read-only t)
-      (goto-char (point-min))
-      (local-set-key (kbd "RET") 'cde-ref-jmp))))
+      (cde--send-command (concat "R " cde--project " " buffer-file-name " "
+				   (cde--sympos-string) "\n")))))
 
 
 (defun cde-ref-jmp()
@@ -140,14 +103,16 @@ other switches:
     (when (not (eq line 0))
       (forward-line (1- line)))))
 
+
 (defun cde-symbol-back()
   (interactive)
-  (let ((pos (car cde-ring)))
+  (let ((pos (car cde--ring)))
     (if pos (prog1 (find-file (car pos))
 	      (goto-char (point-min))
 	      (forward-char (nth 1 pos))
-	      (setq cde-ring (cdr cde-ring)))
+	      (setq cde--ring (cdr cde--ring)))
       (dframe-message "Jump history is empty"))))
+
 
 (defun cde-compile()
   "Suggest to compile of project directory"
@@ -155,16 +120,97 @@ other switches:
   (when (or (not (boundp 'compile-history))
 	     (= (length compile-history) 0))
     (setq compile-history '("make -k "))
-    (when cde-project
-      (push (concat "make -k -C " cde-project " ") compile-history))
+    (when cde--project
+      (push (concat "make -k -C " cde--project " ") compile-history))
     (if (> (length compile-history) 0)
 	(setq compile-command (car compile-history))))
   (execute-extended-command nil "compile"))
 
 
+(defun cde-init()
+  (unless cde--process
+    (let ((process-connection-type nil)
+          (process-adaptive-read-buffering nil))
+      (setq cde--process
+            (start-process cde--process-name cde--process-buffer
+			   "cde" cde-args)
+	    cde--hold t)
+      (get-buffer-create "dbg")
+      (buffer-disable-undo cde--process-buffer)
+      (set-process-query-on-exit-flag cde--process nil)
+      (set-process-sentinel cde--process 'sent)
+      (set-process-filter cde--process 'cde--handle-output)))
+  (cde--send-command (concat "A " buffer-file-name "\n")))
+
+(defun sent(process event)
+  (message "Process quit!!!")
+  (setq cde--process nil))
+
+(defun cde-try-quit()
+  (if cde--process
+      (prog2 (process-send-string cde--process "Q\n") nil) t))
+
+
+;;;###autoload
+(defun company-cde(command &optional arg &rest ignored)
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-cde))
+    (prefix (and (derived-mode-p 'c++-mode) (cons (cde--prefix) t)))
+    (candidates (cons :async
+		      'cde--candidates))
+    (annotation (get-text-property 0 'anno arg))
+    (meta (get-text-property 0 'meta arg))
+    (post-completion (let ((anno (get-text-property 0 'anno arg)))
+		       (when anno
+			 (insert anno)
+			 (company-template-c-like-templatify
+				(concat arg anno)))))
+    (sorted t)))
+
+
+;; private functions
+(defun cde--sympos()
+  (let ((bounds (bounds-of-thing-at-point 'symbol)))
+    (if bounds (car bounds) nil)))
+
+
+(defun cde--sympos-string()
+  (let ((bounds (bounds-of-thing-at-point 'symbol)))
+    (if bounds
+	(int-to-string (car bounds)) nil)))
+
+
+(defun cde--buffer-size()
+  (int-to-string (- (point-max) (point-min))))
+
+
+(defun cde--ref-setup(items)
+  (let ((refbuf (get-buffer-create "references")))
+    (when (not (window-live-p cde--ref-window))
+      (delete-other-windows)
+
+      (setq cde--ref-window (split-window-right))
+      (set-window-buffer cde--ref-window refbuf)
+
+    (select-window cde--ref-window))
+
+    (with-current-buffer refbuf
+      (setq-local buffer-read-only nil)
+      (erase-buffer)
+      (dolist (item items)
+	(if (listp item)
+	    (insert (propertize (format "%5d|" (car item)) 'face 'linum) "\t"
+		    (nth 1 item) "\n")
+	  (insert (propertize item 'face 'font-lock-type-face) "\n")))
+      (setq-local buffer-read-only t)
+      (goto-char (point-min))
+      (local-set-key (kbd "RET") 'cde--ref-jmp))))
+
+
 ;; TODO: rewrite this function aims to convert build output to
 ;; compile_commands.json
-(defun cde-parse-prj()
+(defun cde--parse-prj()
   (interactive)
   (let ((logfile (read-file-name "build log: ")))
     (when logfile
@@ -194,7 +240,7 @@ other switches:
 		       (push exp defines))))))
 	(delete-dups includes)
 	(save-excursion
-	  (let ((buf (find-file-noselect cde-project-file)))
+	  (let ((buf (find-file-noselect cde--project-file)))
 	    (set-buffer buf)
 	    (erase-buffer)
 	    (dolist (inc defines)
@@ -205,86 +251,54 @@ other switches:
 	    (save-buffer)
 	    (kill-buffer)))))))
 
-(defun cde-init()
-  (unless cde-process
-    (let ((process-connection-type nil)
-          (process-adaptive-read-buffering nil))
-      (setq cde-process
-            (start-process cde-process-name cde-process-buffer
-			   "cde" cde-args)
-	    cde-hold t)
-      (get-buffer-create "dbg")
-      (buffer-disable-undo cde-process-buffer)
-      (set-process-query-on-exit-flag cde-process nil)
-      (set-process-filter cde-process 'cde-handle-output)))
-  (cde-send-command (concat "A " buffer-file-name "\n")))
 
-
-(defun cde-handle-output(process output)
+(defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
     (with-current-buffer "dbg"
       (insert output)
       (goto-char (point-max)))
-    (with-current-buffer cde-process-buffer
+    (with-current-buffer cde--process-buffer
       (insert output)
       (goto-char (point-max))
       (setq doeval (> (line-number-at-pos) 1)))
     (when doeval
-      (with-current-buffer cde-process-buffer
+      (with-current-buffer cde--process-buffer
 	(setq cmds (car (read-from-string (buffer-string))))
 	(erase-buffer)
 	)
       (eval cmds))))
 
-(defun cde-try-quit()
-  (if cde-process
-      (prog2 (process-send-string cde-process "Q\n") nil)
-    t))
 
-(defun cde-send-command(cmd)
-  (when cde-process
-    (process-send-string cde-process cmd)))
+(defun cde--send-command(cmd)
+  (when cde--process
+    (process-send-string cde--process cmd)))
 
-(defun cde-candidates(callback)
-  (setq-local cde-callback callback)
-  (let ((pos (or (cde-sympos) (point))))
-    (cde-send-command (concat "C " cde-project " "
+
+(defun cde--candidates(callback)
+  (setq-local cde--callback callback)
+  (if cde--project
+    (let ((pos (or (cde--sympos) (point))))
+      (cde--send-command (concat "C " cde--project " "
 				 buffer-file-name " "
-				 (cde-prefix) " "
+				 (cde--prefix) " "
 				 (int-to-string (line-number-at-pos pos)) " "
 				 (int-to-string
 				  (save-excursion (goto-char pos)
 						  (current-column))) " "
-				 (cde-buffer-size) "\n"
-				 (buffer-string)))))
+				 (cde--buffer-size) "\n"
+				 (buffer-string))))
+    (funcall callback '())))
 
-(defun cde-prefix()
+
+(defun cde--prefix()
   (if (not (company-in-string-or-comment))
       (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-;;;###autoload
-(defun company-cde(command &optional arg &rest ignored)
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-cde))
-    ;(init (unless cde-project (message "Warning: no project files found")))
-    (prefix (and (derived-mode-p 'c++-mode) (cons (cde-prefix) t)))
-    (candidates (cons :async
-		      'cde-candidates))
-    (annotation (get-text-property 0 'anno arg))
-    (meta (get-text-property 0 'meta arg))
-    (post-completion (let ((anno (get-text-property 0 'anno arg)))
-		       (when anno
-			 (insert anno)
-			 (company-template-c-like-templatify
-				(concat arg anno)))))
-    (sorted t)
-    ))
-
 
 (defun tst()
+  "show current pos"
   (interactive)
   (prin1 (- (point) 1)))
 (global-set-key [f2] 'tst)

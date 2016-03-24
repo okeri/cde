@@ -80,7 +80,6 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
         index_->loadPCHData();
     }
     // TODO: implement compile_commands.json handling
-    // TODO: clang and gcc default paths append to -I
 }
 
 
@@ -127,7 +126,7 @@ void CDEProject::definition(const string &filename, uint32_t pos,
         cout << index_->fileName(def.file)
              << "\")(goto-char (point-min))(forward-char " << def.pos
              << ")(push (list \"" << filename
-             << "\" " << pos << ") cde-ring))" << endl;
+             << "\" " << pos << ") cde--ring))" << endl;
     } else {
         cout << "(dframe-message \"No definition found\")" << endl;
     }
@@ -165,7 +164,7 @@ void CDEProject::references(const string &filename, uint32_t pos,
         cout << "(message \"No references found\")" << endl;
     } else {
         string last = "", current;
-        cout << "(cde-ref-setup '(";
+        cout << "(cde--ref-setup '(";
         for (const auto& r: results) {
             current = index_->fileName(r.first.file);
             if (last != current) {
@@ -262,7 +261,7 @@ bool CDEProject::fileInProject(const string &filename) const {
 
 
 void CDEProject::acknowledge(const string &filename) {
-    cout << "(setq-local cde-project \"" << index_->projectPath() << "\")"
+    cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
          << endl;
     updateProjectFile(filename, 0);
 }
@@ -316,6 +315,6 @@ CDEProject::~CDEProject() {
     }
     delete index_;
 
-    cout << "(prog1 (setq cde-process nil)"
+    cout << "(prog1 (setq cde--process nil)"
          << "(save-buffers-kill-terminal))" << endl;
 }
