@@ -16,6 +16,10 @@
 (require 'company-template)
 (require 'cl-lib)
 
+(defface hide-ifdef-shadow '((t (:inherit shadow)))
+  "Face for shadowing ifdef blocks."
+  :group 'hide-ifdef
+  :version "23.1")
 
 ;; user variables
 (defvar cde-args ""
@@ -250,6 +254,21 @@ other switches:
 	      (princ (concat inc "\n") buf))
 	    (save-buffer)
 	    (kill-buffer)))))))
+
+(defun cde--line-to-pt(line)
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line line)
+    (point)))
+
+(defun cde--hideif(ranges)
+  (dolist (r ranges)
+    (let ((start (cde--line-to-pt (nth 0 r)))
+	  (end (cde--line-to-pt (nth 1 r))))
+      (remove-overlays start end 'hide-ifdef t)
+      (let ((o (make-overlay start end)))
+	(overlay-put o 'hide-ifdef t)
+	(overlay-put o 'face 'hide-ifdef-shadow)))))
 
 
 (defun cde--handle-output(process output)

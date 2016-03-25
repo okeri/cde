@@ -56,6 +56,9 @@ static bool endsWithLow(const std::string &str, const std::string &end) {
 
 bool isHeader(const std::string &path) {
     static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++",""};
+    if (path.find(".") == std::string::npos) {
+        return true;
+    }
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;

@@ -39,6 +39,7 @@
 
 using namespace clang;
 
+
 class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
     friend class RecursiveASTVisitor<CDEIndexImpl>;
@@ -476,10 +477,12 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
     ASTUnit *curr = unit ? unit : errUnit.get();
     sm_ = &curr->getSourceManager();
-    handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(), false);
+
 
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
+        handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(),
+                          false);
         return false;
     }
 
@@ -499,9 +502,34 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                 }
             }
         }
+        // this works for sources, and fails in headers
+        // there 2 possible solutions:
+        // 1. investigate header parsing
+        // 2. pass all skipped range to elisp side for caching.
+        // this not really good idea, because one header could be included
+        // into 2 different sources having different defines.
+        // TODO: repair header hideifs
+        const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
+        std::map<uint32_t, uint32_t> currentSkips;
+        for (const auto &s : skipped) {
+            uint32_t b, e, dummy, file;
+            file = getLoc(s.getBegin(), &dummy, &b);
+            if (file == getLoc(s.getEnd(), &dummy, &e) &&
+                file == info->second.getId()) {
+                currentSkips[b] = e - 1;
+            }
+        }
+        if (!currentSkips.empty()) {
+            cout << "(cde--hideif '(";
+            for (const auto &it : currentSkips) {
+                cout << "(" << it.first  << " " << it.second << ") ";
+            }
+            cout << "))" << endl;
+        }
         info->second.setTime(time(NULL));
         return true;
     }
+    handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(), false);
     return false;
 }
 
