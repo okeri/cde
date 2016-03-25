@@ -198,7 +198,7 @@ class CiConsumer : public CodeCompleteConsumer {
                             meta += "  // ";
                             meta += completion->getBriefComment();
                         }
-                        cout << " 'meta " << quoted(meta) << ") ";
+                        cout << " 'meta " << quoted(meta) << ")";
                     }
                 }
             }
@@ -412,7 +412,6 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
     // TODO: if changed file is header, silently call threaded reparsing
     // of all affected TUs
-
     currentUnit_ = &info->second;
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
@@ -450,7 +449,6 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
         args.push_back(info->first.c_str());
 
-
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
@@ -477,7 +475,6 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
     ASTUnit *curr = unit ? unit : errUnit.get();
     sm_ = &curr->getSourceManager();
-
 
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
@@ -522,7 +519,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         if (!currentSkips.empty()) {
             cout << "(cde--hideif '(";
             for (const auto &it : currentSkips) {
-                cout << "(" << it.first  << " " << it.second << ") ";
+                cout << "(" << it.first  << " " << it.second << ")";
             }
             cout << "))" << endl;
         }

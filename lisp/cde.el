@@ -261,6 +261,7 @@ other switches:
     (forward-line line)
     (point)))
 
+;; emacs build-in hideif compatible ?
 (defun cde--hideif(ranges)
   (dolist (r ranges)
     (let ((start (cde--line-to-pt (nth 0 r)))
@@ -270,7 +271,8 @@ other switches:
 	(overlay-put o 'hide-ifdef t)
 	(overlay-put o 'face 'hide-ifdef-shadow)))))
 
-
+;; TODO: when cde process throws multiple messages with newlines
+;; this could work wrong
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
     (with-current-buffer "dbg"
