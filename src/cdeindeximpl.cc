@@ -391,6 +391,17 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
 }
 
+static const char *getClangIncludeArg() {
+    static string clangInc("-I");
+    if (clangInc == "-I") {
+        clangInc += LLVM_PREFIX;
+        clangInc += "/lib/clang/";
+        clangInc += CLANG_VERSION_STRING;
+        clangInc += "/include";
+    }
+    return clangInc.c_str();
+}
+
 bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                         bool fromCompletion) {
     if (unsaved.empty() &&
@@ -421,36 +432,24 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         args.reserve(16);
 
         args.push_back("-Xclang");
-        //        args.push_back("-c");
         args.push_back("-detailed-preprocessing-record");
         currentUnit_->copyArgsToClangArgs(&args);
 
-        bool nostdinc = currentUnit_->haveNostdinc();
-        if (!nostdinc) {
-            // clang includes
-            args.push_back("-isystem");
-            string clangInc("");
-            clangInc += LLVM_PREFIX;
-            clangInc += "/lib/clang/";
-            clangInc += CLANG_VERSION_STRING;
-            clangInc += "/include";
-            args.push_back(clangInc.c_str());
-        }
-
-
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
-        if (!nostdinc) {
+        if (!currentUnit_->haveNostdinc()) {
+            // clang include path
+            args.push_back(getClangIncludeArg());
+            // gcc includes
             const unordered_set<string> &gcc_includes = gccSupport::includes();
             for (const auto &i : gcc_includes) {
                 args.push_back(i.c_str());
             }
         }
+
         args.push_back(info->first.c_str());
 
-        // for (auto s : args) {
-        //     cout << s << endl;
-        // }
+
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));

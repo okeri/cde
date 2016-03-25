@@ -168,8 +168,11 @@ class SourceInfo {
 typedef map<string, SourceInfo>::iterator SourceIter;
 
 class CDEIndex {
+    SourceIter root_;
+
   protected:
     string storePath_;
+
   public:
     map<CI_KEY, CI_DATA> records_;
     map<string, SourceInfo> files_;
@@ -177,8 +180,8 @@ class CDEIndex {
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
-        files_.emplace(piecewise_construct, forward_as_tuple(projPath),
-                       forward_as_tuple(0, nullptr));
+        root_ = files_.emplace(piecewise_construct, forward_as_tuple(projPath),
+                       forward_as_tuple(0, nullptr)).first;
     }
 
     const SourceIter findFile(const string &filename) {
@@ -191,7 +194,7 @@ class CDEIndex {
     }
 
     inline const SourceIter getTUFile(const string &filename) {
-        return getFile(filename, &files_.begin()->second);
+        return getFile(filename, &root_->second);
     }
 
 
@@ -228,9 +231,12 @@ class CDEIndex {
     }
 
     inline const string& projectPath() {
-        return files_.begin()->first;
+        return root_->first;
     }
 
+    inline void setGlobalArgs(const string &args) {
+        root_->second.setArgs(args);
+    }
     virtual bool parse(const SourceIter &info, const string &unsaved,
                        bool fromCompletion) = 0;
     virtual void loadPCHData() = 0;

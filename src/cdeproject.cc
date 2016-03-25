@@ -74,7 +74,7 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
     if (f) {
         string content((istreambuf_iterator<char>(f)),
                        istreambuf_iterator<char>());
-        index_->files_.begin()->second.setArgs(content);
+        index_->setGlobalArgs(content);
     }
     if (pch) {
         index_->loadPCHData();
