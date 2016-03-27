@@ -28,14 +28,16 @@ class CDEProject {
     Db db_;
     CDEIndex *index_;
     void readFromStdIn(size_t size, string* buf);
-    void updateProjectFile(const SourceIter &si, size_t unsavedSize);
+    void updateProjectFile(const SourceIter &si, size_t unsavedSize, bool
+                           noTimeCheck);
 
   public:
     CDEProject(const string &projectPath, const string &store, bool pch);
     ~CDEProject();
     bool fileInProject(const string &filename) const;
     void scanProject();
-    void updateProjectFile(const string &filename, size_t unsavedSize);
+    void updateProjectFile(const string &filename, size_t unsavedSize,
+                           bool noTimeCheck);
     void definition(const string &filename, uint32_t pos, size_t unsavedSize);
     void references(const string &filename, uint32_t pos, size_t unsavedSize);
     void findfile(const string &filename, const string &parent);

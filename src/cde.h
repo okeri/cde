@@ -64,7 +64,7 @@ class CDE {
     inline void update(const string &projectpath,
                        const string &filename) {
         if (filename != "") {
-            getProject(projectpath).updateProjectFile(filename, 0);
+            getProject(projectpath).updateProjectFile(filename, 0, false);
         } else {
             getProject(projectpath).scanProject();
         }

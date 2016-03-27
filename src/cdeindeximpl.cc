@@ -78,7 +78,7 @@ class CDEIndexImpl : public CDEIndex,
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
     bool parse(const SourceIter &info, const string &unsaved,
-               bool fromCompletion);
+               bool fromCompletion, bool noTimeCheck);
     void completion(const SourceIter &info, const string &prefix,
                     uint32_t line, uint32_t column, const string &unsaved);
     void loadPCHData();
@@ -349,7 +349,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
                              const string &unsaved) {
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter == units_.end()) {
-        if (!parse(info, unsaved, true)) {
+        if (!parse(info, unsaved, true, true)) {
             return;
         }
     }
@@ -404,8 +404,8 @@ static const char *getClangIncludeArg() {
 }
 
 bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
-                        bool fromCompletion) {
-    if (unsaved.empty() &&
+                         bool fromCompletion, bool noTimeCheck) {
+    if (!noTimeCheck && unsaved.empty() &&
         info->second.time() > fileutil::fileTime(info->first)) {
         return true;
     }
@@ -440,6 +440,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         if (!currentUnit_->haveNostdinc()) {
             // clang include path
             args.push_back(getClangIncludeArg());
+
             // gcc includes
             const unordered_set<string> &gcc_includes = gccSupport::includes();
             for (const auto &i : gcc_includes) {
@@ -453,6 +454,15 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
 
+        // TODO: parse headers independently or not?
+        // there 2 possible solutions:
+        // 1. link header to source and parse only parent source
+        // disdvantages:
+        // a. need to cache skipped ranges in elisp side
+        // b. one header could have multiple parents
+        // 2. reparse headers individually
+        // disadvantages:
+        // header ALWAYS should include all dependencies.
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles, false, 1,
@@ -499,13 +509,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                 }
             }
         }
-        // this works for sources, and fails in headers
-        // there 2 possible solutions:
-        // 1. investigate header parsing
-        // 2. pass all skipped range to elisp side for caching.
-        // this not really good idea, because one header could be included
-        // into 2 different sources having different defines.
-        // TODO: repair header hideifs
+
         const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
         std::map<uint32_t, uint32_t> currentSkips;
         for (const auto &s : skipped) {

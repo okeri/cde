@@ -96,10 +96,10 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 
 
 void CDEProject::updateProjectFile(const SourceIter &si,
-                                      size_t unsavedSize) {
+                                   size_t unsavedSize, bool noTimeCheck) {
     string unsaved;
     readFromStdIn(unsavedSize, &unsaved);
-    if (!index_->parse(si, unsaved, false)) {
+    if (!index_->parse(si, unsaved, false, noTimeCheck)) {
         cout << "(message \"error: parsing " << si->first << " failed "
                 "with fatal error\")" << endl;
     }
@@ -107,15 +107,16 @@ void CDEProject::updateProjectFile(const SourceIter &si,
 
 
 void CDEProject::updateProjectFile(const string &filename,
-                                      size_t unsavedSize) {
-    updateProjectFile(index_->getTUFile(filename.c_str()), unsavedSize);
+                                   size_t unsavedSize, bool noTimeCheck) {
+    updateProjectFile(index_->getTUFile(filename.c_str()), unsavedSize,
+                      noTimeCheck);
 }
 
 
 void CDEProject::definition(const string &filename, uint32_t pos,
                                size_t unsavedSize) {
     const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize);
+    updateProjectFile(si, unsavedSize, false);
     CI_KEY ref({si->second.getId(), pos});
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -134,7 +135,7 @@ void CDEProject::definition(const string &filename, uint32_t pos,
 void CDEProject::references(const string &filename, uint32_t pos,
                                size_t unsavedSize) {
     const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize);
+    updateProjectFile(si, unsavedSize, false);
     uint32_t file = si->second.getId(),
             dfile = INVALID, dpos;
     map<CI_KEY, uint32_t> results;
@@ -261,7 +262,7 @@ bool CDEProject::fileInProject(const string &filename) const {
 void CDEProject::acknowledge(const string &filename) {
     cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
          << endl;
-    updateProjectFile(filename, 0);
+    updateProjectFile(filename, 0, true);
 }
 
 void CDEProject::scanProject() {
@@ -269,7 +270,7 @@ void CDEProject::scanProject() {
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it: files) {
         cout << "(dframe-message \"parsing " << it << "\")" << endl;
-        updateProjectFile(it.c_str(), 0);
+        updateProjectFile(it.c_str(), 0, false);
     }
     cout << "(dframe-message \"Done!\")" << endl;
 }

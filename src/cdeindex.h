@@ -238,7 +238,7 @@ class CDEIndex {
         root_->second.setArgs(args);
     }
     virtual bool parse(const SourceIter &info, const string &unsaved,
-                       bool fromCompletion) = 0;
+                       bool fromCompletion, bool noTimeCheck) = 0;
     virtual void loadPCHData() = 0;
     virtual void completion(const SourceIter &info, const string &prefix,
                             uint32_t line, uint32_t column,

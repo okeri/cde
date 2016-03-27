@@ -169,7 +169,8 @@ other switches:
 		       (when anno
 			 (insert anno)
 			 (company-template-c-like-templatify
-				(concat arg anno)))))
+			  (concat arg anno)))))
+    (no-cache t)
     (sorted t)))
 
 
@@ -284,7 +285,8 @@ other switches:
       (setq doeval (> (line-number-at-pos) 1)))
     (when doeval
       (with-current-buffer cde--process-buffer
-	(setq cmds (car (read-from-string (buffer-string))))
+	(setq cmds (car (read-from-string
+			 (concat "(progn " (buffer-string) ")"))))
 	(erase-buffer)
 	)
       (eval cmds))))
