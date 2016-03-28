@@ -101,16 +101,18 @@ int main(int argc, char *argv[]) {
                 case 'R':
                     if (count > 3) {
                         cde.references(commands[1], commands[2],
-                                          stoi(commands[3]) - 1,
-                                          count > 4 ? stoi(commands[4]) : 0);
+                                       stoi(commands[3]) - 1,
+                                       count > 5 ? stoi(commands[5]) : 0,
+                                       count > 5 ? stoi(commands[4]));
                     }
                     break;
 
                 case 'D':
                     if (count > 3) {
                         cde.definition(commands[1], commands[2],
-                                          stoi(commands[3]) - 1,
-                                          count > 4 ? stoi(commands[4]) : 0);
+                                       stoi(commands[3]) - 1,
+                                       count > 5 ? stoi(commands[5]) : 0,
+                                       count > 5 ? stoi(commands[4]) : 0);
                     }
                     break;
 

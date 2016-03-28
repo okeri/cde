@@ -99,7 +99,7 @@ class CiConsumer : public CodeCompleteConsumer {
     SmallVector<StoredDiagnostic, 8> diagnostics;
     SmallVector<const llvm::MemoryBuffer *, 1> temporaryBuffers;
 
-    //TODO: cache completions  ???
+    // TODO: cache completions  ???
     IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccCachedAllocator;
 
   public:
@@ -495,6 +495,8 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
     context_ = &curr->getASTContext();
 
+    // TODO : clear records_ for specified unit.
+    // in this case we should also handle dependencies
     TraverseDecl(context_->getTranslationUnitDecl());
     if (unit) {
         PreprocessingRecord &pp = *unit->getPreprocessor()

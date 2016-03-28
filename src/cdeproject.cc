@@ -114,9 +114,9 @@ void CDEProject::updateProjectFile(const string &filename,
 
 
 void CDEProject::definition(const string &filename, uint32_t pos,
-                               size_t unsavedSize) {
+                            size_t unsavedSize, bool forceReparse) {
     const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize, false);
+    updateProjectFile(si, unsavedSize, forceReparse);
     CI_KEY ref({si->second.getId(), pos});
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -133,9 +133,9 @@ void CDEProject::definition(const string &filename, uint32_t pos,
 
 
 void CDEProject::references(const string &filename, uint32_t pos,
-                               size_t unsavedSize) {
+                            size_t unsavedSize, bool forceReparse) {
     const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize, false);
+    updateProjectFile(si, unsavedSize, forceReparse);
     uint32_t file = si->second.getId(),
             dfile = INVALID, dpos;
     map<CI_KEY, uint32_t> results;

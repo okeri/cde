@@ -38,8 +38,10 @@ class CDEProject {
     void scanProject();
     void updateProjectFile(const string &filename, size_t unsavedSize,
                            bool noTimeCheck);
-    void definition(const string &filename, uint32_t pos, size_t unsavedSize);
-    void references(const string &filename, uint32_t pos, size_t unsavedSize);
+    void definition(const string &filename, uint32_t pos, size_t unsavedSize,
+                    bool forceReparse);
+    void references(const string &filename, uint32_t pos, size_t unsavedSize,
+                    bool forceReparse);
     void findfile(const string &filename, const string &parent);
     void swapSrcHdr(const string &filename);
     void acknowledge(const string &filename);

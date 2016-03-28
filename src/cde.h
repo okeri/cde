@@ -71,13 +71,17 @@ class CDE {
     }
 
     inline void definition(const string &projectpath, const string &filename,
-                           uint32_t pos, size_t unsavedSize) {
-        getProject(projectpath).definition(filename, pos, unsavedSize);
+                           uint32_t pos, size_t unsavedSize,
+                           bool forceReparce) {
+        getProject(projectpath).definition(filename, pos, unsavedSize,
+                                           forceReparse);
     }
 
     inline void references(const string &projectpath, const string &filename,
-                           uint32_t pos, size_t unsavedSize) {
-        getProject(projectpath).references(filename, pos, unsavedSize);
+                           uint32_t pos, size_t unsavedSize,
+                           bool forceReparce) {
+        getProject(projectpath).references(filename, pos, unsavedSize,
+                                           forceReparse);
     }
 
     inline void completion(const string &projectpath, const string &filename,

@@ -15,11 +15,7 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 (require 'company-template)
 (require 'cl-lib)
-
-(defface hide-ifdef-shadow '((t (:inherit shadow)))
-  "Face for shadowing ifdef blocks."
-  :group 'hide-ifdef
-  :version "23.1")
+(require 'hideif) ;; for font variable
 
 ;; user variables
 (defvar cde-args ""
@@ -31,17 +27,21 @@ other switches:
   -P - enables PCH cache
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
-;; variables
+(defvar cde-debug nil "toggle debug buffer")
+
+;; internal variables
 (defvar cde--ring '())
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
+(defvar-local cde--buffer-changed nil)
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
 
-(add-to-list 'kill-emacs-query-functions 'cde-try-quit)
+
+(add-hook 'kill-emacs-query-functions 'cde-try-quit)
 
 ;; public functions
 (defun cde-update-project()
@@ -65,24 +65,25 @@ other switches:
 	  (cde--send-command (concat "F " cde--project " "
 				       buffer-file-name " "
 				       (match-string 1 line) "\n"))
-	(if (buffer-modified-p)
-	    (cde--send-command (concat "D " cde--project " "
-					 buffer-file-name " " (cde--sympos-string)
-					 " " (cde--buffer-size) "\n"
-					 (buffer-string)))
-	  (cde--send-command (concat "D " cde--project " " buffer-file-name
-				       " " (cde--sympos-string) "\n")))))))
+	(cde--send-command (concat "D " cde--project " "
+				   buffer-file-name " " (cde--sympos-string)
+				   (when (buffer-modified-p)
+				     (concat " " (cde--expr-to-inp
+						  cde--buffer-changed)
+					     " " (cde--buffer-size) "\n"
+					     (buffer-string))) "\n"))))))
+
 
 (defun cde-symbol-ref()
   (interactive)
   (when cde--project
-    (if (buffer-modified-p)
-	(cde--send-command (concat "R " cde--project " " buffer-file-name " "
-				     (cde--sympos-string) " " (cde--buffer-size)
-				     "\n" (buffer-string)))
-      (cde--send-command (concat "R " cde--project " " buffer-file-name " "
-				   (cde--sympos-string) "\n")))))
-
+    (cde--send-command (concat "R " cde--project " " buffer-file-name " "
+			       (cde--sympos-string)
+			       (when (buffer-modified-p)
+				   (concat " " (cde--expr-to-inp
+						cde--buffer-changed)
+					   " " (cde--buffer-size) "\n"
+					   (buffer-string))) "\n"))))
 
 (defun cde-ref-jmp()
   (interactive)
@@ -139,13 +140,20 @@ other switches:
             (start-process cde--process-name cde--process-buffer
 			   "cde" cde-args)
 	    cde--hold t)
-      (get-buffer-create "dbg")
+      (when cde-debug
+	(get-buffer-create "cde-dbg")
+	(buffer-disable-undo "cde-dbg"))
+
       (buffer-disable-undo cde--process-buffer)
       (set-process-query-on-exit-flag cde--process nil)
       (set-process-sentinel cde--process 'sent)
       (set-process-filter cde--process 'cde--handle-output)))
-  (cde--send-command (concat "A " buffer-file-name "\n")))
+  (cde--send-command (concat "A " buffer-file-name "\n"))
+  (add-hook 'after-change-functions
+	    (lambda (start end len)
+	      (setq cde--buffer-changed t)) nil t))
 
+;;; temprotary
 (defun sent(process event)
   (message "Process quit!!!")
   (setq cde--process nil))
@@ -263,22 +271,26 @@ other switches:
     (point)))
 
 ;; emacs build-in hideif compatible ?
+;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
+;; is empty and it's not local... the possible solution is export preprocessor
+;; directives from c++ side and allow hideif to manage it.
 (defun cde--hideif(ranges)
   (dolist (r ranges)
     (let ((start (cde--line-to-pt (nth 0 r)))
 	  (end (cde--line-to-pt (nth 1 r))))
-      (remove-overlays start end 'hide-ifdef t)
+      (remove-overlays start end 'cde--hide-ifdef t)
       (let ((o (make-overlay start end)))
-	(overlay-put o 'hide-ifdef t)
+	(overlay-put o 'cde--hide-ifdef t)
 	(overlay-put o 'face 'hide-ifdef-shadow)))))
 
 ;; TODO: when cde process throws multiple messages with newlines
 ;; this could work wrong
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
-    (with-current-buffer "dbg"
-      (insert output)
-      (goto-char (point-max)))
+    (when cde-debug
+      (with-current-buffer "cde-dbg"
+	(insert output)
+	(goto-char (point-max))))
     (with-current-buffer cde--process-buffer
       (insert output)
       (goto-char (point-max))
@@ -319,11 +331,7 @@ other switches:
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-
-(defun tst()
-  "show current pos"
-  (interactive)
-  (prin1 (- (point) 1)))
-(global-set-key [f2] 'tst)
+(defun cde--expr-to-inp(expr)
+  (if expr "1" "0"))
 
 (provide 'cde)
