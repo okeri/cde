@@ -80,10 +80,10 @@ int main(int argc, char *argv[]) {
                     }
                     break;
 
-                case 'U':
-                    if (count > 1) {
-                        cde.update(commands[1], (count > 2) ?
-                                      commands[2] : "");
+                case 'B':
+                    if (count > 4) {
+                        cde.check(commands[1], commands[2],
+                                  stoi(commands[3]), stoi(commands[4]));
                     }
                     break;
 
@@ -91,19 +91,10 @@ int main(int argc, char *argv[]) {
                     if (count > 5) {
                         unsigned prefixOfs = count - 4;
                         cde.completion(commands[1], commands[2], prefixOfs ==
-                                          2 ? "" : commands[prefixOfs],
-                                          stoi(commands[prefixOfs + 1]),
-                                          stoi(commands[prefixOfs + 2]) + 1,
-                                          stoi(commands[prefixOfs + 3]));
-                    }
-                    break;
-
-                case 'R':
-                    if (count > 3) {
-                        cde.references(commands[1], commands[2],
-                                       stoi(commands[3]) - 1,
-                                       count > 5 ? stoi(commands[5]) : 0,
-                                       count > 5 ? stoi(commands[4]) : 0);
+                                       2 ? "" : commands[prefixOfs],
+                                       stoi(commands[prefixOfs + 1]),
+                                       stoi(commands[prefixOfs + 2]) + 1,
+                                       stoi(commands[prefixOfs + 3]));
                     }
                     break;
 
@@ -119,7 +110,23 @@ int main(int argc, char *argv[]) {
                 case 'F':
                     if (count > 2) {
                         cde.findfile(commands[1], commands[2],
-                                        count > 3 ? commands[3] : "");
+                                     count > 3 ? commands[3] : "");
+                    }
+                    break;
+
+                case 'R':
+                    if (count > 3) {
+                        cde.references(commands[1], commands[2],
+                                       stoi(commands[3]) - 1,
+                                       count > 5 ? stoi(commands[5]) : 0,
+                                       count > 5 ? stoi(commands[4]) : 0);
+                    }
+                    break;
+
+                case 'U':
+                    if (count > 1) {
+                        cde.update(commands[1], (count > 2) ?
+                                   commands[2] : "");
                     }
                     break;
 

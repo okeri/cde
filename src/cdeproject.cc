@@ -95,21 +95,18 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 }
 
 
-void CDEProject::updateProjectFile(const SourceIter &si,
-                                   size_t unsavedSize, bool noTimeCheck) {
+void CDEProject::updateProjectFile(const SourceIter &si, size_t unsavedSize,
+                                   bool noTimeCheck, uint32_t line) {
     string unsaved;
     readFromStdIn(unsavedSize, &unsaved);
-    if (!index_->parse(si, unsaved, false, noTimeCheck)) {
-        cout << "(message \"error: parsing " << si->first << " failed "
-                "with fatal error\")" << endl;
-    }
+    index_->parse(si, unsaved, false, noTimeCheck, line);
 }
 
 
-void CDEProject::updateProjectFile(const string &filename,
-                                   size_t unsavedSize, bool noTimeCheck) {
+void CDEProject::updateProjectFile(const string &filename, size_t unsavedSize,
+                                   bool noTimeCheck, uint32_t line) {
     updateProjectFile(index_->getTUFile(filename.c_str()), unsavedSize,
-                      noTimeCheck);
+                      noTimeCheck, line);
 }
 
 
@@ -281,6 +278,12 @@ void CDEProject::readFromStdIn(size_t size, string* buf) {
         buf->resize(size);
         cin.read(const_cast<char*>(buf->data()), size);
     }
+}
+
+
+void CDEProject::check(const string &filename, uint32_t line,
+                       size_t unsavedSize) {
+    updateProjectFile(filename, unsavedSize, true, line);
 }
 
 

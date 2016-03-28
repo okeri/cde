@@ -70,6 +70,11 @@ class CDE {
         }
     }
 
+    inline void check(const string &projectpath, const string &filename,
+                      uint32_t line, size_t unsavedSize) {
+        getProject(projectpath).check(filename, line, unsavedSize);
+    }
+
     inline void definition(const string &projectpath, const string &filename,
                            uint32_t pos, size_t unsavedSize,
                            bool forceReparse) {

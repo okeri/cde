@@ -62,10 +62,9 @@ class CDEIndexImpl : public CDEIndex,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void printDiagnostics(const StoredDiagnostic *diag);
     void handleDiagnostics(const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
-                           bool onlyFirstError);
+                           bool onlyErrors, uint32_t stopLine);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
                 bool fwd = false);
     bool VisitDecl(Decl *d);
@@ -78,7 +77,7 @@ class CDEIndexImpl : public CDEIndex,
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
     bool parse(const SourceIter &info, const string &unsaved,
-               bool fromCompletion, bool noTimeCheck);
+               bool fromCompletion, bool noTimeCheck, uint32_t stopLine);
     void completion(const SourceIter &info, const string &prefix,
                     uint32_t line, uint32_t column, const string &unsaved);
     void loadPCHData();
@@ -349,7 +348,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
                              const string &unsaved) {
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter == units_.end()) {
-        if (!parse(info, unsaved, true, true)) {
+        if (!parse(info, unsaved, true, true, 0)) {
             return;
         }
     }
@@ -385,7 +384,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
         consumer.diag->hasFatalErrorOccurred()) {
         sm_ = consumer.sourceMgr.get();
         handleDiagnostics(consumer.diagnostics.begin(),
-                          consumer.diagnostics.end(), true);
+                          consumer.diagnostics.end(), true, 0);
     }
 
     // ???
@@ -404,7 +403,8 @@ static const char *getClangIncludeArg() {
 }
 
 bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
-                         bool fromCompletion, bool noTimeCheck) {
+                         bool fromCompletion, bool noTimeCheck,
+                         uint32_t stopLine) {
     if (!noTimeCheck &&
         info->second.time() > fileutil::fileTime(info->first)) {
         return true;
@@ -489,7 +489,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
         handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(),
-                          false);
+                          false, stopLine);
         return false;
     }
 
@@ -532,65 +532,66 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         info->second.setTime(time(NULL));
         return true;
     }
-    handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(), false);
+    if (curr->stored_diag_begin() != curr->stored_diag_end()) {
+        handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(),
+                          false, stopLine);
+    }
     return false;
 }
 
 
-void CDEIndexImpl::printDiagnostics(const StoredDiagnostic *diag) {
-    stringstream msg;
-    cout << "(message ";
-
-    const FullSourceLoc& location = diag->getLocation();
-    if (location.isValid()) {
-        const PresumedLoc& loc = sm_->getPresumedLoc(location);
-        msg << loc.getFilename() << ":"
-            << loc.getLine() << ": ";
-    }
-
-    switch (diag->getLevel()) {
-        case DiagnosticsEngine::Ignored:
-        case DiagnosticsEngine::Note:
-        case DiagnosticsEngine::Remark:
-            msg << "note: ";
-            break;
-
-        case DiagnosticsEngine::Warning:
-            msg << "warning: ";
-            break;
-
-        case DiagnosticsEngine::Error:
-            msg << "error: ";
-            break;
-
-        case DiagnosticsEngine::Fatal:
-            msg << "fatal error: ";
-            break;
-    }
-    msg << diag->getMessage().str();
-    cout << quoted(msg.str()) << ")" << endl;
-}
-
 void CDEIndexImpl::handleDiagnostics(const StoredDiagnostic *begin,
-                                    const StoredDiagnostic *end,
-                                    bool onlyFirstError) {
-    if (onlyFirstError == true) {
-        for (const StoredDiagnostic* it = begin; it != end; ++it) {
-            if (*it) {
-                if (it->getLevel() == DiagnosticsEngine::Level::Error ||
-                    it->getLevel() == DiagnosticsEngine::Level::Fatal) {
-                    printDiagnostics(it);
-                    return;
+                                     const StoredDiagnostic *end,
+                                     bool onlyErrors,
+                                     uint32_t stopLine) {
+    stringstream msg;
+    cout << "(cde--error-rep '(";
+    for (const StoredDiagnostic* it = begin; it != end; ++it) {
+        if (*it) {
+            if (!onlyErrors ||
+                it->getLevel() == DiagnosticsEngine::Level::Error ||
+                it->getLevel() == DiagnosticsEngine::Level::Fatal) {
+                msg.str("");
+
+                const FullSourceLoc& location = it->getLocation();
+                if (location.isValid()) {
+                    const PresumedLoc& loc = sm_->getPresumedLoc(location);
+                    if (stopLine > 0 && loc.getLine() >= stopLine) {
+                        continue;
+                    }
+
+                    cout << "(" << loc.getLine() << " ";
+                    // TODO: make filename shorten (relative to project path if
+                    // possible
+                    msg << loc.getFilename() << ":"
+                        << loc.getLine() << ": ";
                 }
-            }
-        }
-    } else {
-        for (const StoredDiagnostic* it = begin; it != end; ++it) {
-            if (*it) {
-                printDiagnostics(it);
+
+                switch (it->getLevel()) {
+                    case DiagnosticsEngine::Ignored:
+                    case DiagnosticsEngine::Note:
+                    case DiagnosticsEngine::Remark:
+                        msg << "note: ";
+                        break;
+
+                    case DiagnosticsEngine::Warning:
+                        msg << "warning: ";
+                        break;
+
+                    case DiagnosticsEngine::Error:
+                        msg << "error: ";
+                        break;
+
+                    case DiagnosticsEngine::Fatal:
+                        msg << "fatal error: ";
+                        break;
+                }
+                msg << it->getMessage().str();
+                cout << quoted(msg.str()) << ")";
             }
         }
     }
+    cout << "))" << endl;
 }
 
 uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,

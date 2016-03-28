@@ -28,11 +28,12 @@ other switches:
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
 (defvar cde-debug nil "toggle debug buffer")
-
+(defvar cde-check 0 "experimental")
 ;; internal variables
 (defvar cde--ring '())
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
+(defvar cde--idle-timer nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--buffer-changed nil)
@@ -68,8 +69,7 @@ other switches:
 	(cde--send-command (concat "D " cde--project " "
 				   buffer-file-name " " (cde--sympos-string)
 				   (when (buffer-modified-p)
-				     (concat " " (cde--expr-to-inp
-						  cde--buffer-changed)
+				     (concat " " (cde--bcval-reset)
 					     " " (cde--buffer-size) "\n"
 					     (buffer-string))) "\n"))))))
 
@@ -80,8 +80,7 @@ other switches:
     (cde--send-command (concat "R " cde--project " " buffer-file-name " "
 			       (cde--sympos-string)
 			       (when (buffer-modified-p)
-				   (concat " " (cde--expr-to-inp
-						cde--buffer-changed)
+				   (concat " " (cde--bcval-reset)
 					   " " (cde--buffer-size) "\n"
 					   (buffer-string))) "\n"))))
 
@@ -149,13 +148,17 @@ other switches:
       (set-process-sentinel cde--process 'sent)
       (set-process-filter cde--process 'cde--handle-output)))
   (cde--send-command (concat "A " buffer-file-name "\n"))
+  (when (and (> cde-check 0) (not (timerp cde--idle-timer)))
+    (setq cde--idle-timer (run-with-idle-timer
+			   cde-check t #'cde--idle-handler)))
+
   (add-hook 'after-change-functions
 	    (lambda (start end len)
 	      (setq cde--buffer-changed t)) nil t))
 
-;;; temprotary
+;;; temporary
 (defun sent(process event)
-  (message "Process quit!!!")
+  (message-box "Process quit!!!")
   (setq cde--process nil))
 
 (defun cde-try-quit()
@@ -324,6 +327,13 @@ other switches:
 				 (buffer-string))))
     (funcall callback '())))
 
+(defun cde--idle-handler()
+  (when (cde--bcval-reset t)
+    (cde--send-command (concat "B " cde--project " "
+			       buffer-file-name " "
+			       (int-to-string (line-number-at-pos)) " "
+			       (cde--buffer-size) "\n"
+			       (buffer-string)))))
 
 (defun cde--prefix()
   (if (not (company-in-string-or-comment))
@@ -331,7 +341,19 @@ other switches:
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-(defun cde--expr-to-inp(expr)
-  (if expr "1" "0"))
+(defun cde--bcval-reset(&optional nores)
+  (if cde--buffer-changed
+      (prog2 (unless nores (setq cde--buffer-changed nil)) "1") "0"))
+
+(defun cde--error-rep(errors)
+  ;; i guess it will work following way:
+  ;; check if error in foreign file = forget ? (handle on c++ side)
+  ;; (remove-overlays start end 'cde--error t)
+  ;; set new overlays accordingly to error lines
+  ;; when cursor pos is on a new line, cancel timer,
+  ;; start a timer, if timer triggered, display error message
+  (dolist (err errors)
+    )
+  (message (nth 1 (car errors))))
 
 (provide 'cde)
