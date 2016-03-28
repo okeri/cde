@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
                         cde.references(commands[1], commands[2],
                                        stoi(commands[3]) - 1,
                                        count > 5 ? stoi(commands[5]) : 0,
-                                       count > 5 ? stoi(commands[4]));
+                                       count > 5 ? stoi(commands[4]) : 0);
                     }
                     break;
 

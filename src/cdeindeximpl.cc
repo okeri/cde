@@ -405,7 +405,7 @@ static const char *getClangIncludeArg() {
 
 bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                          bool fromCompletion, bool noTimeCheck) {
-    if (!noTimeCheck && unsaved.empty() &&
+    if (!noTimeCheck &&
         info->second.time() > fileutil::fileTime(info->first)) {
         return true;
     }
