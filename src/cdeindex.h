@@ -86,6 +86,8 @@ class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
     vector<string> args_;
+
+    // TODO: add support for multiple parents
     const SourceInfo *parent_;
 
     inline const vector<string> &args() const {
@@ -193,10 +195,9 @@ class CDEIndex {
             });
     }
 
-    inline const SourceIter getTUFile(const string &filename) {
-        return getFile(filename, &root_->second);
+    inline SourceIter getTUFile(const string &filename) {
+        return getFile(filename, nullptr);
     }
-
 
     const SourceIter getFile(const string &filename,
                              const SourceInfo *parent) {

@@ -67,6 +67,8 @@ int main(int argc, char *argv[]) {
     string command, last;
     vector<string> commands(8);
 
+    // TODO: add support for multiple unsaved files
+
     // Looks like we do not need error handling here :P
     while (getline(cin, command)) {
         commands.resize(0);
@@ -112,6 +114,12 @@ int main(int argc, char *argv[]) {
                         cde.findfile(commands[1], commands[2],
                                      count > 3 ? commands[3] : "");
                     }
+                    break;
+
+                case 'M':
+                    // map/unmap
+                    // filename
+                    // filesize
                     break;
 
                 case 'R':

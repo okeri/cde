@@ -39,7 +39,6 @@
 
 using namespace clang;
 
-
 class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
     friend class RecursiveASTVisitor<CDEIndexImpl>;
@@ -54,15 +53,27 @@ class CDEIndexImpl : public CDEIndex,
 
   private:
     string getPCHFilename(uint32_t n);
+    inline const FileEntry * feFromLocation(const SourceLocation &location) {
+        FileID fileID = sm_->getFileID(location);
+
+        bool invalid = false;
+        const SrcMgr::SLocEntry &sloc =
+                sm_->getSLocEntry(fileID, &invalid);
+        if (invalid || !sloc.isFile()) {
+            return nullptr;
+        }
+        return sm_->getFileEntryForSLocEntry(sloc);
+    }
+
     uint32_t getLoc(const SourceLocation &location,
                     uint32_t *pos, uint32_t *line = nullptr);
-
+    void printIncludeLocTree(const SourceLocation &location);
     template <class D>
     inline void record(const SourceLocation &locRef, const D *decl,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void handleDiagnostics(const StoredDiagnostic *begin,
+    void handleDiagnostics(uint32_t fileId, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
                            bool onlyErrors, uint32_t stopLine);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
@@ -148,10 +159,11 @@ class CiConsumer : public CodeCompleteConsumer {
             if (!completion->getAvailability()) {
                 const string &entry = completion->getTypedText();
                 if (entry != "" && strncmp("operator", entry.c_str(), 8) &&
-                    entry[0] != '~' &&
+                    entry[0] != '~' /*&&
                     (results[i].Kind != CodeCompletionResult::RK_Declaration ||
                      completion->begin()->Kind ==
-                                        CodeCompletionString::CK_ResultType)) {
+                     CodeCompletionString::CK_ResultType) */
+                    ) {
                     if (prefix_ == "" || !strncmp(prefix_.c_str(), entry.c_str(),
                                                   prefix_.length())) {
                         if (!hasFilteredResults) {
@@ -319,10 +331,12 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
             definition = cast<UsingDirectiveDecl>(declaration)
                     ->getNominatedNamespace();
             break;
+
         case Decl::NamespaceAlias:
             definition = cast<NamespaceAliasDecl>(declaration)
                     ->getNamespace();
             break;
+
         case Decl::Function:
         case Decl::CXXMethod:
         case Decl::CXXConstructor:
@@ -332,6 +346,7 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
                 record(function_def->getLocation(), declaration, true);
             }
             return true;
+
         default:
             return true;
     }
@@ -383,7 +398,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     if (consumer.diag->hasErrorOccurred() ||
         consumer.diag->hasFatalErrorOccurred()) {
         sm_ = consumer.sourceMgr.get();
-        handleDiagnostics(consumer.diagnostics.begin(),
+        handleDiagnostics(info->second.getId(), consumer.diagnostics.begin(),
                           consumer.diagnostics.end(), true, 0);
     }
 
@@ -410,8 +425,8 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         return true;
     }
 
-    // TODO: if changed file is header, silently call threaded reparsing
-    // of all affected TUs
+    // TODO: if changed file is header, find TU and parse it
+
     currentUnit_ = &info->second;
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
@@ -454,15 +469,11 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
 
-        // TODO: parse headers independently or not?
-        // there 2 possible solutions:
+        // TODO: parse headers independently or not? solution has chosen
         // 1. link header to source and parse only parent source
         // disdvantages:
         // a. need to cache skipped ranges in elisp side
         // b. one header could have multiple parents
-        // 2. reparse headers individually
-        // disadvantages:
-        // header ALWAYS should include all dependencies.
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles, false, 1,
@@ -485,30 +496,37 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
 
     ASTUnit *curr = unit ? unit : errUnit.get();
     sm_ = &curr->getSourceManager();
-
-    if (curr->getDiagnostics().hasErrorOccurred() ||
-        curr->getDiagnostics().hasFatalErrorOccurred()) {
-        handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(),
-                          false, stopLine);
-        return false;
-    }
-
-    context_ = &curr->getASTContext();
-
-    // TODO : clear records_ for specified unit.
-    // in this case we should also handle dependencies
-    TraverseDecl(context_->getTranslationUnitDecl());
     if (unit) {
         PreprocessingRecord &pp = *unit->getPreprocessor()
                 .getPreprocessingRecord();
+        SourceIter parentFile = files_.end();
         for (const auto &it: pp) {
-            if (it->getKind() ==
-                PreprocessedEntity::EntityKind::MacroExpansionKind) {
-                MacroExpansion *me(cast<MacroExpansion>(it));
-                MacroDefinitionRecord *mdr = me->getDefinition();
-                if (mdr != nullptr) {
-                    record(me->getSourceRange().getBegin(), mdr);
+            switch (it->getKind()) {
+                case PreprocessedEntity::EntityKind::MacroExpansionKind: {
+                    MacroExpansion *me(cast<MacroExpansion>(it));
+                    MacroDefinitionRecord *mdr = me->getDefinition();
+                    if (mdr != nullptr) {
+                        record(me->getSourceRange().getBegin(), mdr);
+                    }
                 }
+                    break;
+                case PreprocessedEntity::EntityKind::InclusionDirectiveKind: {
+                    InclusionDirective *id(cast<InclusionDirective>(it));
+                    const FileEntry *fe = feFromLocation(//sm_->getExpansionLoc(
+                        id->getSourceRange().getBegin());
+
+
+                    if (fe == nullptr) {
+                        continue;
+                    }
+
+                    if (parentFile == files_.end() || parentFile->first !=
+                        fe->getName()) {
+                        parentFile = getFile(fe->getName(), nullptr);
+                    }
+                    getFile(id->getFile()->getName(), &parentFile->second);
+                }
+                    break;
             }
         }
 
@@ -522,6 +540,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
                 currentSkips[b] = e - 1;
             }
         }
+
         if (!currentSkips.empty()) {
             cout << "(cde--hideif '(";
             for (const auto &it : currentSkips) {
@@ -529,18 +548,42 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
             }
             cout << "))" << endl;
         }
+    }
+
+    if (curr->getDiagnostics().hasErrorOccurred() ||
+        curr->getDiagnostics().hasFatalErrorOccurred()) {
+        handleDiagnostics(info->second.getId(), curr->stored_diag_begin(),
+                          curr->stored_diag_end(), false, stopLine);
+        return false;
+    }
+    if (unit) {
+        context_ = &curr->getASTContext();
+
+        // TODO : clear records_ for specified unit.
+        // in this case we should also handle dependencies
+        TraverseDecl(context_->getTranslationUnitDecl());
+
         info->second.setTime(time(NULL));
         return true;
     }
+
     if (curr->stored_diag_begin() != curr->stored_diag_end()) {
-        handleDiagnostics(curr->stored_diag_begin(), curr->stored_diag_end(),
-                          false, stopLine);
+        handleDiagnostics(info->second.getId(), curr->stored_diag_begin(),
+                          curr->stored_diag_end(), false, stopLine);
     }
     return false;
 }
 
 
-void CDEIndexImpl::handleDiagnostics(const StoredDiagnostic *begin,
+void CDEIndexImpl::printIncludeLocTree(const SourceLocation &location) {
+
+}
+
+// we will cache diagnostics,
+// so better way is to do something like ((file line) (file line) "report")
+
+void CDEIndexImpl::handleDiagnostics(uint32_t fileId,
+                                     const StoredDiagnostic *begin,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors,
                                      uint32_t stopLine) {
@@ -553,19 +596,19 @@ void CDEIndexImpl::handleDiagnostics(const StoredDiagnostic *begin,
                 it->getLevel() == DiagnosticsEngine::Level::Fatal) {
                 msg.str("");
 
-                const FullSourceLoc& location = it->getLocation();
-                if (location.isValid()) {
-                    const PresumedLoc& loc = sm_->getPresumedLoc(location);
-                    if (stopLine > 0 && loc.getLine() >= stopLine) {
-                        continue;
-                    }
-
-                    cout << "(" << loc.getLine() << " ";
-                    // TODO: make filename shorten (relative to project path if
-                    // possible
-                    msg << loc.getFilename() << ":"
-                        << loc.getLine() << ": ";
+                uint32_t dummy, line, file = getLoc(it->getLocation(),
+                                                    &dummy, &line, fileId);
+                if (stopLine > 0 && line >= stopLine) {
+                    continue;
                 }
+                cout << "(" << line << " ";
+                if (file != fileId) {
+                    msg << fileName(file) << ":"
+                        << line << ": ";
+                }
+
+                // TODO: make filename shorten (relative to project path if
+                // possible
 
                 switch (it->getLevel()) {
                     case DiagnosticsEngine::Ignored:
@@ -595,22 +638,17 @@ void CDEIndexImpl::handleDiagnostics(const StoredDiagnostic *begin,
 }
 
 uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,
-                             uint32_t *pos, uint32_t *line) {
+                              uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
-    FileID fileID = sm_->getFileID(expansionLoc);
-    bool invalid = false;
-    const SrcMgr::SLocEntry &sloc = sm_->getSLocEntry(fileID, &invalid);
-    if (invalid || !sloc.isFile()) {
-        return INVALID;
-    }
-    const FileEntry *fe = sm_->getFileEntryForSLocEntry(sloc);
+    const FileEntry *fe = feFromLocation(expansionLoc);
     if (fe != nullptr) {
         *pos = sm_->getDecomposedLoc(expansionLoc).second;
         if (line) {
             *line = sm_->getExpansionLineNumber(expansionLoc);
         }
-        // TODO: not really good idea, becase we dont know travese order
-        // and we need to implement child->parent include tree
+
+        // it seems situation when getFile will not found location in index is
+        // impossible
         return getFile(fe->getName(), currentUnit_)->second.getId();
     }
     return INVALID;

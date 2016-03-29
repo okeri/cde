@@ -17,6 +17,11 @@
 (require 'cl-lib)
 (require 'hideif) ;; for font variable
 
+
+(defgroup cde nil
+  "cde mode"
+  :group 'c)
+
 ;; user variables
 (defvar cde-args ""
   "Additional arguments could be passed to cde,
@@ -29,6 +34,7 @@ other switches:
 
 (defvar cde-debug nil "toggle debug buffer")
 (defvar cde-check 0 "experimental")
+
 ;; internal variables
 (defvar cde--ring '())
 (defvar cde--ref-window nil)
@@ -41,8 +47,6 @@ other switches:
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
 
-
-(add-hook 'kill-emacs-query-functions 'cde-try-quit)
 
 ;; public functions
 (defun cde-update-project()
@@ -131,31 +135,6 @@ other switches:
   (execute-extended-command nil "compile"))
 
 
-(defun cde-init()
-  (unless cde--process
-    (let ((process-connection-type nil)
-          (process-adaptive-read-buffering nil))
-      (setq cde--process
-            (start-process cde--process-name cde--process-buffer
-			   "cde" cde-args)
-	    cde--hold t)
-      (when cde-debug
-	(get-buffer-create "cde-dbg")
-	(buffer-disable-undo "cde-dbg"))
-
-      (buffer-disable-undo cde--process-buffer)
-      (set-process-query-on-exit-flag cde--process nil)
-      (set-process-sentinel cde--process 'sent)
-      (set-process-filter cde--process 'cde--handle-output)))
-  (cde--send-command (concat "A " buffer-file-name "\n"))
-  (when (and (> cde-check 0) (not (timerp cde--idle-timer)))
-    (setq cde--idle-timer (run-with-idle-timer
-			   cde-check t #'cde--idle-handler)))
-
-  (add-hook 'after-change-functions
-	    (lambda (start end len)
-	      (setq cde--buffer-changed t)) nil t))
-
 ;;; temporary
 (defun sent(process event)
   (message-box "Process quit!!!")
@@ -167,11 +146,22 @@ other switches:
 
 
 ;;;###autoload
+(define-minor-mode cde-mode
+  "cde"
+  nil
+  " cde"
+  nil
+  :group 'cde
+  (if cde-mode
+      (cde--init)
+    (cde--deinit)))
+
+;;;###autoload
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-cde))
-    (prefix (and (derived-mode-p 'c++-mode) (cons (cde--prefix) t)))
+    (prefix (and (derived-mode-p 'cde-mode) (cons (cde--prefix) t)))
     (candidates (cons :async
 		      'cde--candidates))
     (annotation (get-text-property 0 'anno arg))
@@ -273,18 +263,56 @@ other switches:
     (forward-line line)
     (point)))
 
-;; emacs build-in hideif compatible ?
-;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
-;; is empty and it's not local... the possible solution is export preprocessor
-;; directives from c++ side and allow hideif to manage it.
-(defun cde--hideif(ranges)
-  (dolist (r ranges)
-    (let ((start (cde--line-to-pt (nth 0 r)))
-	  (end (cde--line-to-pt (nth 1 r))))
-      (remove-overlays start end 'cde--hide-ifdef t)
-      (let ((o (make-overlay start end)))
-	(overlay-put o 'cde--hide-ifdef t)
-	(overlay-put o 'face 'hide-ifdef-shadow)))))
+;; TODO : c++ file mapping as separate command
+(defun cde--map-file(filename domap)
+  )
+
+(defun cde--idle-handler()
+  ;; TODO: walk around all buffers and map/unmap files
+  ;; (when cde--buffer-changed
+  ;;   (setq cde--buffer-changed nil)
+  ;;   (cde--send-command (concat "B " cde--project " "
+  ;; 			       buffer-file-name " "
+  ;; 			       (int-to-string (line-number-at-pos)) " "
+  ;; 			       (cde--buffer-size) "\n"
+  ;; 			       (buffer-string)))
+  ;;   )
+  )
+
+(defun cde--change (start end)
+  (setq cde--buffer-changed t))
+
+(defun cde--deinit()
+  (when (timerp cde--idle-timer)
+    (cancel-timer cde--idle-timer))
+  (remove-hook 'before-change-functions 'cde--change)
+  (cde-try-quit))
+
+(add-hook 'kill-emacs-query-functions 'cde-try-quit)
+
+(defun cde--init()
+  (unless cde--process
+    (let ((process-connection-type nil)
+          (process-adaptive-read-buffering nil))
+      (setq cde--process
+            (start-process cde--process-name cde--process-buffer
+			   "cde" cde-args)
+	    cde--hold t)
+      (when cde-debug
+	(get-buffer-create "cde-dbg")
+	(buffer-disable-undo "cde-dbg"))
+
+      (buffer-disable-undo cde--process-buffer)
+      (set-process-query-on-exit-flag cde--process nil)
+      (set-process-sentinel cde--process 'sent)
+      (set-process-filter cde--process 'cde--handle-output)))
+  (cde--send-command (concat "A " buffer-file-name "\n"))
+  (when (and (> cde-check 0) (not (timerp cde--idle-timer)))
+    (setq cde--idle-timer (run-with-idle-timer
+			   cde-check t #'cde--idle-handler)))
+
+  (add-hook 'before-change-functions 'cde--change nil t))
+
 
 ;; TODO: when cde process throws multiple messages with newlines
 ;; this could work wrong
@@ -327,33 +355,44 @@ other switches:
 				 (buffer-string))))
     (funcall callback '())))
 
-(defun cde--idle-handler()
-  (when (cde--bcval-reset t)
-    (cde--send-command (concat "B " cde--project " "
-			       buffer-file-name " "
-			       (int-to-string (line-number-at-pos)) " "
-			       (cde--buffer-size) "\n"
-			       (buffer-string)))))
-
 (defun cde--prefix()
   (if (not (company-in-string-or-comment))
       (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-(defun cde--bcval-reset(&optional nores)
+(defun cde--bcval-reset()
   (if cde--buffer-changed
-      (prog2 (unless nores (setq cde--buffer-changed nil)) "1") "0"))
+      (prog2 (setq cde--buffer-changed nil) "1") "0"))
 
+
+
+;; emacs build-in hideif compatible ?
+;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
+;; is empty and it's not local... the possible solution is export preprocessor
+;; directives from c++ side and allow hideif to manage it.
+
+;; TODO: new fmt: '((file (b e)) (file2 (b e) (b e)))
+(defun cde--hideif(ranges)
+  (dolist (r ranges)
+    (let ((start (cde--line-to-pt (nth 0 r)))
+	  (end (cde--line-to-pt (nth 1 r))))
+      (remove-overlays start end 'cde--hide-ifdef t)
+      (let ((o (make-overlay start end)))
+	(overlay-put o 'cde--hide-ifdef t)
+	(overlay-put o 'face 'hide-ifdef-shadow)))))
+
+;; we do not need cache results because reparse will be called on opening new
+;; file
 (defun cde--error-rep(errors)
+  ;; TODO: newfmt ((file line) (file line) "report")
   ;; i guess it will work following way:
   ;; check if error in foreign file = forget ? (handle on c++ side)
   ;; (remove-overlays start end 'cde--error t)
   ;; set new overlays accordingly to error lines
   ;; when cursor pos is on a new line, cancel timer,
   ;; start a timer, if timer triggered, display error message
-  (dolist (err errors)
-    )
+  (dolist (err errors))
   (message (nth 1 (car errors))))
 
 (provide 'cde)
