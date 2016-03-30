@@ -95,25 +95,14 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 }
 
 
-void CDEProject::updateProjectFile(const SourceIter &si, size_t unsavedSize,
-                                   bool noTimeCheck, uint32_t line) {
-    string unsaved;
-    readFromStdIn(unsavedSize, &unsaved);
-    index_->parse(si, unsaved, false, noTimeCheck, line);
+void CDEProject::updateProjectFile(const string &filename, uint32_t line) {
+    updateProjectFile(index_->getFile(filename.c_str()), line);
 }
 
 
-void CDEProject::updateProjectFile(const string &filename, size_t unsavedSize,
-                                   bool noTimeCheck, uint32_t line) {
-    updateProjectFile(index_->getTUFile(filename.c_str()), unsavedSize,
-                      noTimeCheck, line);
-}
-
-
-void CDEProject::definition(const string &filename, uint32_t pos,
-                            size_t unsavedSize, bool forceReparse) {
-    const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize, forceReparse);
+void CDEProject::definition(const string &filename, uint32_t pos) {
+    const SourceIter &si = index_->getFile(filename);
+    updateProjectFile(si);
     CI_KEY ref({si->second.getId(), pos});
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -129,10 +118,9 @@ void CDEProject::definition(const string &filename, uint32_t pos,
 }
 
 
-void CDEProject::references(const string &filename, uint32_t pos,
-                            size_t unsavedSize, bool forceReparse) {
-    const SourceIter &si = index_->getTUFile(filename);
-    updateProjectFile(si, unsavedSize, forceReparse);
+void CDEProject::references(const string &filename, uint32_t pos) {
+    const SourceIter &si = index_->getFile(filename);
+    updateProjectFile(si);
     uint32_t file = si->second.getId(),
             dfile = INVALID, dpos;
     map<CI_KEY, uint32_t> results;
@@ -180,7 +168,7 @@ void CDEProject::findfile(const string &filename, const string &parent) {
     if (it != index_->files_.end()) {
         cout << "(find-file \"" << it->first << "\")" << endl;
     } else {
-        const SourceIter &pit = index_->getTUFile(parent);
+        const SourceIter &pit = index_->getFile(parent);
         unordered_set<string> includes;
         includes.insert(fileutil::dirUp(parent));
         pit->second.fillIncludes(&includes);
@@ -226,7 +214,7 @@ void CDEProject::swapSrcHdr(const string &filename) {
 
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
-            const SourceIter &it = index_->getTUFile(filename);
+            const SourceIter &it = index_->getFile(filename);
             unordered_set<string> includes;
             string test;
             includes.insert(fileutil::dirUp(filename));
@@ -238,7 +226,7 @@ void CDEProject::swapSrcHdr(const string &filename) {
                 for (unsigned i = 1; exts[extIter][i] != ""; ++i) {
                     string testfile = test + exts[extIter][i];
                     if (fileutil::fileExists(testfile)) {
-                        index_->getTUFile(testfile);
+                        index_->getFile(testfile);
                         cout << "(find-file \"" << testfile << "\")" << endl;
                         return;
                      }
@@ -259,7 +247,7 @@ bool CDEProject::fileInProject(const string &filename) const {
 void CDEProject::acknowledge(const string &filename) {
     cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
          << endl;
-    updateProjectFile(filename, 0, true);
+    updateProjectFile(filename);
 }
 
 void CDEProject::scanProject() {
@@ -267,33 +255,28 @@ void CDEProject::scanProject() {
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it: files) {
         cout << "(dframe-message \"parsing " << it << "\")" << endl;
-        updateProjectFile(it.c_str(), 0, false);
+        updateProjectFile(it.c_str());
     }
     cout << "(dframe-message \"Done!\")" << endl;
 }
 
+// TODO: move mapping to separate module
+// void CDEProject::readFromStdIn(size_t size, string* buf) {
+//     if (size) {
+//         buf->resize(size);
+//         cin.read(const_cast<char*>(buf->data()), size);
+//     }
+// }
 
-void CDEProject::readFromStdIn(size_t size, string* buf) {
-    if (size) {
-        buf->resize(size);
-        cin.read(const_cast<char*>(buf->data()), size);
-    }
-}
 
-
-void CDEProject::check(const string &filename, uint32_t line,
-                       size_t unsavedSize) {
-    updateProjectFile(filename, unsavedSize, true, line);
+void CDEProject::check(const string &filename, uint32_t line) {
+    updateProjectFile(filename, line);
 }
 
 
 void CDEProject::completion(const string &filename, const string &prefix,
-                               uint32_t line, uint32_t column,
-                               size_t unsavedSize) {
-    string unsaved;
-    readFromStdIn(unsavedSize, &unsaved);
-    index_->completion(index_->getTUFile(filename), prefix, line, column,
-                       unsaved);
+                               uint32_t line, uint32_t column) {
+    index_->completion(index_->getFile(filename), prefix, line, column);
 }
 
 CDEProject::~CDEProject() {

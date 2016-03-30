@@ -88,6 +88,7 @@ class SourceInfo {
     vector<string> args_;
 
     // TODO: add support for multiple parents
+    // replace with vector<sourceIter> ?
     const SourceInfo *parent_;
 
     inline const vector<string> &args() const {
@@ -179,6 +180,7 @@ class CDEIndex {
     map<CI_KEY, CI_DATA> records_;
     map<string, SourceInfo> files_;
 
+  public:
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
@@ -186,6 +188,7 @@ class CDEIndex {
                        forward_as_tuple(0, nullptr)).first;
     }
 
+    /** find files in index  ending with filename*/
     const SourceIter findFile(const string &filename) {
         const SourceIter &end = files_.end();
         return find_if(
@@ -194,13 +197,17 @@ class CDEIndex {
                 return fileutil::endsWith(p.first, filename);
             });
     }
+    /** get translation unit for current file*/
+    // const SourceIter getTU(const string &filename) {
+    //     if (fileutil::isHeader(filename)) {
 
-    inline SourceIter getTUFile(const string &filename) {
-        return getFile(filename, nullptr);
-    }
-
+    //     } else {
+    //         return getFile(filename);
+    //     }
+    // }
+    /** get a file from index, or add it if files is not present in index*/
     const SourceIter getFile(const string &filename,
-                             const SourceInfo *parent) {
+                             const SourceInfo *parent = nullptr) {
         const auto &it = files_.find(filename);
         if (it != files_.end()) {
             return it;
@@ -208,7 +215,9 @@ class CDEIndex {
             uint32_t nval = files_.size() + 1;
             return files_.emplace(piecewise_construct,
                                   forward_as_tuple(filename),
-                                  forward_as_tuple(nval, parent)).first;
+                                  forward_as_tuple(nval, parent != nullptr ?
+                                                   parent : &root_->second))
+                    .first;
         }
     }
 
@@ -238,13 +247,11 @@ class CDEIndex {
     inline void setGlobalArgs(const string &args) {
         root_->second.setArgs(args);
     }
-    virtual bool parse(const SourceIter &info, const string &unsaved,
-                       bool fromCompletion, bool noTimeCheck,
+    virtual bool parse(const SourceIter &info, bool fromCompletion,
                        uint32_t stopLine) = 0;
     virtual void loadPCHData() = 0;
     virtual void completion(const SourceIter &info, const string &prefix,
-                            uint32_t line, uint32_t column,
-                            const string &unsaved) = 0;
+                            uint32_t line, uint32_t column) = 0;
     virtual ~CDEIndex() {
     };
 };

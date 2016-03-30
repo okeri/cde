@@ -64,36 +64,30 @@ class CDE {
     inline void update(const string &projectpath,
                        const string &filename) {
         if (filename != "") {
-            getProject(projectpath).updateProjectFile(filename, 0, false);
+            getProject(projectpath).updateProjectFile(filename);
         } else {
             getProject(projectpath).scanProject();
         }
     }
 
     inline void check(const string &projectpath, const string &filename,
-                      uint32_t line, size_t unsavedSize) {
-        getProject(projectpath).check(filename, line, unsavedSize);
+                      uint32_t line) {
+        getProject(projectpath).check(filename, line);
     }
 
     inline void definition(const string &projectpath, const string &filename,
-                           uint32_t pos, size_t unsavedSize,
-                           bool forceReparse) {
-        getProject(projectpath).definition(filename, pos, unsavedSize,
-                                           forceReparse);
+                           uint32_t pos) {
+        getProject(projectpath).definition(filename, pos);
     }
 
     inline void references(const string &projectpath, const string &filename,
-                           uint32_t pos, size_t unsavedSize,
-                           bool forceReparse) {
-        getProject(projectpath).references(filename, pos, unsavedSize,
-                                           forceReparse);
+                           uint32_t pos) {
+        getProject(projectpath).references(filename, pos);
     }
 
     inline void completion(const string &projectpath, const string &filename,
-                           const string &prefix, uint32_t line, uint32_t column,
-                           size_t unsavedSize) {
-        getProject(projectpath).completion(filename, prefix, line, column,
-                                           unsavedSize);
+                           const string &prefix, uint32_t line, uint32_t column) {
+        getProject(projectpath).completion(filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde

@@ -83,29 +83,25 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'B':
-                    if (count > 4) {
-                        cde.check(commands[1], commands[2],
-                                  stoi(commands[3]), stoi(commands[4]));
+                    if (count == 4) {
+                        cde.check(commands[1], commands[2], stoi(commands[3]));
                     }
                     break;
 
                 case 'C':
-                    if (count > 5) {
-                        unsigned prefixOfs = count - 4;
+                    if (count > 4) {
+                        unsigned prefixOfs = count - 3;
                         cde.completion(commands[1], commands[2], prefixOfs ==
                                        2 ? "" : commands[prefixOfs],
                                        stoi(commands[prefixOfs + 1]),
-                                       stoi(commands[prefixOfs + 2]) + 1,
-                                       stoi(commands[prefixOfs + 3]));
+                                       stoi(commands[prefixOfs + 2]) + 1);
                     }
                     break;
 
                 case 'D':
-                    if (count > 3) {
+                    if (count == 4) {
                         cde.definition(commands[1], commands[2],
-                                       stoi(commands[3]) - 1,
-                                       count > 5 ? stoi(commands[5]) : 0,
-                                       count > 5 ? stoi(commands[4]) : 0);
+                                       stoi(commands[3]) - 1);
                     }
                     break;
 
@@ -123,11 +119,9 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'R':
-                    if (count > 3) {
+                    if (count == 4) {
                         cde.references(commands[1], commands[2],
-                                       stoi(commands[3]) - 1,
-                                       count > 5 ? stoi(commands[5]) : 0,
-                                       count > 5 ? stoi(commands[4]) : 0);
+                                       stoi(commands[3]) - 1);
                     }
                     break;
 

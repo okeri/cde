@@ -27,27 +27,24 @@
 class CDEProject {
     Db db_;
     CDEIndex *index_;
-    void readFromStdIn(size_t size, string* buf);
-    void updateProjectFile(const SourceIter &si, size_t unsavedSize, bool
-                           noTimeCheck, uint32_t line = 0);
+    inline void updateProjectFile(const SourceIter &si, uint32_t line = 0) {
+        index_->parse(si, false, line);
+    }
 
   public:
     CDEProject(const string &projectPath, const string &store, bool pch);
     ~CDEProject();
     bool fileInProject(const string &filename) const;
     void scanProject();
-    void check(const string &filename, uint32_t line, size_t unsavedSize);
-    void updateProjectFile(const string &filename, size_t unsavedSize,
-                           bool noTimeCheck, uint32_t line = 0);
-    void definition(const string &filename, uint32_t pos, size_t unsavedSize,
-                    bool forceReparse);
-    void references(const string &filename, uint32_t pos, size_t unsavedSize,
-                    bool forceReparse);
+    void check(const string &filename, uint32_t line);
+    void updateProjectFile(const string &filename, uint32_t line = 0);
+    void definition(const string &filename, uint32_t pos);
+    void references(const string &filename, uint32_t pos);
     void findfile(const string &filename, const string &parent);
     void swapSrcHdr(const string &filename);
     void acknowledge(const string &filename);
     void completion(const string &filename, const string &prefix, uint32_t line,
-                    uint32_t column, size_t unsavedSize);
+                    uint32_t column);
   public:
     static string findProjectRoot(const string &projectPath);
 };

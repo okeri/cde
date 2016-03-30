@@ -40,9 +40,11 @@ other switches:
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
+
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--buffer-changed nil)
+(defvar-local cde--diags nil)
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
@@ -52,6 +54,7 @@ other switches:
 (defun cde-update-project()
   (interactive)
   (when cde--project
+    (cde--map-unsaved)
     (cde--send-command (concat "U " cde--project "\n"))))
 
 
@@ -64,6 +67,7 @@ other switches:
 (defun cde-symbol-def()
   (interactive)
   (when cde--project
+    (cde--map-unsaved)
     (let ((line (buffer-substring-no-properties
 		 (line-beginning-position) (line-end-position))))
       (if (string-match cde--include-re line)
@@ -71,22 +75,16 @@ other switches:
 				       buffer-file-name " "
 				       (match-string 1 line) "\n"))
 	(cde--send-command (concat "D " cde--project " "
-				   buffer-file-name " " (cde--sympos-string)
-				   (when (buffer-modified-p)
-				     (concat " " (cde--bcval-reset)
-					     " " (cde--buffer-size) "\n"
-					     (buffer-string))) "\n"))))))
+				   buffer-file-name " "
+				   (cde--sympos-string) "\n"))))))
 
 
 (defun cde-symbol-ref()
   (interactive)
   (when cde--project
+    (cde--map-unsaved)
     (cde--send-command (concat "R " cde--project " " buffer-file-name " "
-			       (cde--sympos-string)
-			       (when (buffer-modified-p)
-				   (concat " " (cde--bcval-reset)
-					   " " (cde--buffer-size) "\n"
-					   (buffer-string))) "\n"))))
+			       (cde--sympos-string) "\n"))))
 
 (defun cde-ref-jmp()
   (interactive)
@@ -146,22 +144,15 @@ other switches:
 
 
 ;;;###autoload
-(define-minor-mode cde-mode
-  "cde"
-  nil
-  " cde"
-  nil
-  :group 'cde
-  (if cde-mode
-      (cde--init)
-    (cde--deinit)))
+(define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
+  (if cde-mode (cde--init)  (cde--deinit)))
 
 ;;;###autoload
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-cde))
-    (prefix (and (derived-mode-p 'cde-mode) (cons (cde--prefix) t)))
+    (prefix (and cde-mode (cons (cde--prefix) t)))
     (candidates (cons :async
 		      'cde--candidates))
     (annotation (get-text-property 0 'anno arg))
@@ -257,27 +248,21 @@ other switches:
 	    (save-buffer)
 	    (kill-buffer)))))))
 
-(defun cde--line-to-pt(line)
-  (save-excursion
-    (goto-char (point-min))
-    (forward-line line)
-    (point)))
 
-;; TODO : c++ file mapping as separate command
-(defun cde--map-file(filename domap)
-  )
+(defun cde--map-unsaved()
+  ;; for now just save buffers
+  ;; TODO : do real mapping (buffer-list)
+  (save-some-buffers t))
 
 (defun cde--idle-handler()
-  ;; TODO: walk around all buffers and map/unmap files
-  ;; (when cde--buffer-changed
-  ;;   (setq cde--buffer-changed nil)
-  ;;   (cde--send-command (concat "B " cde--project " "
-  ;; 			       buffer-file-name " "
-  ;; 			       (int-to-string (line-number-at-pos)) " "
-  ;; 			       (cde--buffer-size) "\n"
-  ;; 			       (buffer-string)))
-  ;;   )
-  )
+  (when cde--project
+    (cde--error-disp)
+    (cde--map-unsaved)
+    (when cde--buffer-changed
+      (setq cde--buffer-changed nil)
+      (cde--send-command (concat "B " cde--project " "
+				 buffer-file-name " "
+				 (int-to-string (line-number-at-pos)) "\n")))))
 
 (defun cde--change (start end)
   (setq cde--buffer-changed t))
@@ -334,7 +319,6 @@ other switches:
 	)
       (eval cmds))))
 
-
 (defun cde--send-command(cmd)
   (when cde--process
     (process-send-string cde--process cmd)))
@@ -350,9 +334,7 @@ other switches:
 				 (int-to-string (line-number-at-pos pos)) " "
 				 (int-to-string
 				  (save-excursion (goto-char pos)
-						  (current-column))) " "
-				 (cde--buffer-size) "\n"
-				 (buffer-string))))
+						  (current-column))) "\n")))
     (funcall callback '())))
 
 (defun cde--prefix()
@@ -361,31 +343,45 @@ other switches:
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-(defun cde--bcval-reset()
-  (if cde--buffer-changed
-      (prog2 (setq cde--buffer-changed nil) "1") "0"))
+;; (defun cde--bcval-reset()
+;;   (if cde--buffer-changed
+;;       (prog2 (setq cde--buffer-changed nil) "1") "0"))
 
 
+(defun cde--line-to-pt(line)
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line line)
+    (point)))
 
 ;; emacs build-in hideif compatible ?
 ;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
 ;; is empty and it's not local... the possible solution is export preprocessor
 ;; directives from c++ side and allow hideif to manage it.
-
-;; TODO: new fmt: '((file (b e)) (file2 (b e) (b e)))
 (defun cde--hideif(ranges)
   (dolist (r ranges)
-    (let ((start (cde--line-to-pt (nth 0 r)))
-	  (end (cde--line-to-pt (nth 1 r))))
-      (remove-overlays start end 'cde--hide-ifdef t)
-      (let ((o (make-overlay start end)))
-	(overlay-put o 'cde--hide-ifdef t)
-	(overlay-put o 'face 'hide-ifdef-shadow)))))
+    (let ((file nil) (buf nil))
+      (dolist (e r)
+	(if file
+	    (when buf
+	      (with-current-buffer buf
+		(let ((start (cde--line-to-pt (nth 0 e)))
+		      (end (cde--line-to-pt (nth 1 e))))
+		  (remove-overlays start end 'cde--hide-ifdef t)
+		  (let ((o (make-overlay start end)))
+		    (overlay-put o 'cde--hide-ifdef t)
+		    (overlay-put o 'face 'hide-ifdef-shadow)))))
+	  (setq file e buf (get-file-buffer e)))))))
+
+(defun cde--error-disp()
+  (let ((current (assq (line-number-at-pos) cde--diags)))
+    (when current
+      (dframe-message (nth 1 (nth 1 current))))))
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
 (defun cde--error-rep(errors)
-  ;; TODO: newfmt ((file line) (file line) "report")
+  ;; TODO: newfmt ((file line) . (type "report"))
   ;; i guess it will work following way:
   ;; check if error in foreign file = forget ? (handle on c++ side)
   ;; (remove-overlays start end 'cde--error t)

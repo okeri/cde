@@ -65,6 +65,9 @@ class CDEIndexImpl : public CDEIndex,
         return sm_->getFileEntryForSLocEntry(sloc);
     }
 
+    string getLocStr(const SourceLocation &location,
+                     uint32_t *pos, uint32_t *line = nullptr);
+
     uint32_t getLoc(const SourceLocation &location,
                     uint32_t *pos, uint32_t *line = nullptr);
     void printIncludeLocTree(const SourceLocation &location);
@@ -73,7 +76,7 @@ class CDEIndexImpl : public CDEIndex,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void handleDiagnostics(uint32_t fileId, const StoredDiagnostic *begin,
+    void handleDiagnostics(string actualFile, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
                            bool onlyErrors, uint32_t stopLine);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
@@ -87,10 +90,9 @@ class CDEIndexImpl : public CDEIndex,
 
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
-    bool parse(const SourceIter &info, const string &unsaved,
-               bool fromCompletion, bool noTimeCheck, uint32_t stopLine);
+    bool parse(const SourceIter &info, bool fromCompletion, uint32_t stopLine);
     void completion(const SourceIter &info, const string &prefix,
-                    uint32_t line, uint32_t column, const string &unsaved);
+                    uint32_t line, uint32_t column);
     void loadPCHData();
     ~CDEIndexImpl();
 };
@@ -359,22 +361,22 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
 
 // looks like in most cases we need only buffer of current file
 void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
-                             uint32_t line, uint32_t column,
-                             const string &unsaved) {
+                             uint32_t line, uint32_t column) {
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter == units_.end()) {
-        if (!parse(info, unsaved, true, true, 0)) {
+        if (!parse(info, true, 0)) {
             return;
         }
     }
 
     ASTUnit *unit = units_.find(info->second.getId())->second;
     vector<ASTUnit::RemappedFile> remappedFiles;
-    if (!unsaved.empty()) {
-        unique_ptr<llvm::MemoryBuffer> MB =
-                llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
-        remappedFiles.push_back(make_pair(info->first, MB.release()));
-    }
+    // TODO: restore mappings
+    // if (!unsaved.empty()) {
+    //     unique_ptr<llvm::MemoryBuffer> MB =
+    //             llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
+    //     remappedFiles.push_back(make_pair(info->first, MB.release()));
+    // }
 
     CodeCompleteOptions opts;
     opts.IncludeBriefComments = 1;
@@ -398,7 +400,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     if (consumer.diag->hasErrorOccurred() ||
         consumer.diag->hasFatalErrorOccurred()) {
         sm_ = consumer.sourceMgr.get();
-        handleDiagnostics(info->second.getId(), consumer.diagnostics.begin(),
+        handleDiagnostics(info->first, consumer.diagnostics.begin(),
                           consumer.diagnostics.end(), true, 0);
     }
 
@@ -417,13 +419,13 @@ static const char *getClangIncludeArg() {
     return clangInc.c_str();
 }
 
-bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
-                         bool fromCompletion, bool noTimeCheck,
+bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                          uint32_t stopLine) {
-    if (!noTimeCheck &&
-        info->second.time() > fileutil::fileTime(info->first)) {
-        return true;
-    }
+    // TODO: restore timecheck
+    // if (!noTimeCheck &&
+    //     info->second.time() > fileutil::fileTime(info->first)) {
+    //     return true;
+    // }
 
     // TODO: if changed file is header, find TU and parse it
 
@@ -432,11 +434,12 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
     ASTUnit *unit;
     vector<ASTUnit::RemappedFile> remappedFiles;
 
-    if (!unsaved.empty()) {
-        unique_ptr<llvm::MemoryBuffer> MB =
-                llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
-        remappedFiles.push_back(make_pair(info->first, MB.release()));
-    }
+    // TODO: restore mapping
+    // if (!unsaved.empty()) {
+    //     unique_ptr<llvm::MemoryBuffer> MB =
+    //             llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
+    //     remappedFiles.push_back(make_pair(info->first, MB.release()));
+    // }
 
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter != units_.end()) {
@@ -477,7 +480,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles, false, 1,
-            fileutil::isHeader(info->first) ? TU_Prefix : TU_Complete,
+            TU_Complete,
             true, true, true, false, false, false, &errUnit);
 
         if (unit != nullptr) {
@@ -531,28 +534,47 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
         }
 
         const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
-        std::map<uint32_t, uint32_t> currentSkips;
-        for (const auto &s : skipped) {
-            uint32_t b, e, dummy, file;
-            file = getLoc(s.getBegin(), &dummy, &b);
-            if (file == getLoc(s.getEnd(), &dummy, &e) &&
-                file == info->second.getId()) {
-                currentSkips[b] = e - 1;
-            }
-        }
+        // std::map<uint32_t, uint32_t> currentSkips;
+        // for (const auto &s : skipped) {
+        //     uint32_t b, e, dummy, file;
+        //     file = getLoc(s.getBegin(), &dummy, &b);
+        //     if (file == getLoc(s.getEnd(), &dummy, &e) &&
+        //         file == info->second.getId()) {
+        //         currentSkips[b] = e - 1;
+        //     }
+        // }
 
-        if (!currentSkips.empty()) {
+        if (!skipped.empty()) {
+            uint32_t b, e, dummy;
+            string previousFile, file;
             cout << "(cde--hideif '(";
-            for (const auto &it : currentSkips) {
-                cout << "(" << it.first  << " " << it.second << ")";
+            for (const auto &s : skipped) {
+                file = getLocStr(s.getBegin(), &dummy, &b);
+                if (file == getLocStr(s.getEnd(), &dummy, &e)) {
+                    if (file != previousFile) {
+                        if (previousFile != "") {
+                            cout << ")";
+                        }
+                        cout << "(\"" << file  << "\" ";
+                        previousFile = file;
+                    }
+                    cout << "(" << b << " " << e << ")";
+                }
             }
-            cout << "))" << endl;
+            cout << ")))" << endl;
+            //            string current =
+            //TODO: restore skipped
+            // cout << "(cde--hideif '(";
+            // for (const auto &it : skipped) {
+            //     cout << "(" << it.first  << " " << it.second << ")";
+            // }
+            // cout << "))" << endl;
         }
     }
 
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
-        handleDiagnostics(info->second.getId(), curr->stored_diag_begin(),
+        handleDiagnostics(info->first, curr->stored_diag_begin(),
                           curr->stored_diag_end(), false, stopLine);
         return false;
     }
@@ -568,7 +590,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, const string &unsaved,
     }
 
     if (curr->stored_diag_begin() != curr->stored_diag_end()) {
-        handleDiagnostics(info->second.getId(), curr->stored_diag_begin(),
+        handleDiagnostics(info->first, curr->stored_diag_begin(),
                           curr->stored_diag_end(), false, stopLine);
     }
     return false;
@@ -582,12 +604,13 @@ void CDEIndexImpl::printIncludeLocTree(const SourceLocation &location) {
 // we will cache diagnostics,
 // so better way is to do something like ((file line) (file line) "report")
 
-void CDEIndexImpl::handleDiagnostics(uint32_t fileId,
+void CDEIndexImpl::handleDiagnostics(string actualFile,
                                      const StoredDiagnostic *begin,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors,
                                      uint32_t stopLine) {
     stringstream msg;
+    return;
     cout << "(cde--error-rep '(";
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
@@ -596,19 +619,26 @@ void CDEIndexImpl::handleDiagnostics(uint32_t fileId,
                 it->getLevel() == DiagnosticsEngine::Level::Fatal) {
                 msg.str("");
 
-                uint32_t dummy, line, file = getLoc(it->getLocation(),
-                                                    &dummy, &line, fileId);
-                if (stopLine > 0 && line >= stopLine) {
-                    continue;
-                }
-                cout << "(" << line << " ";
-                if (file != fileId) {
-                    msg << fileName(file) << ":"
+                uint32_t dummy, line;
+                string file = getLocStr(it->getLocation(),
+                                        &dummy, &line);
+                if (file == actualFile) {
+                    if (stopLine > 0 && line >= stopLine) {
+                        continue;
+                    }
+                } else {
+                    // TODO: redefine file-line to location where file included
+                    // from
+                    // TODO: make filename shorten (relative to project path if
+                    // possible
+                    // (setq diags '(("file1".((12.(1 "message1")) (13.(2 "msg2")))) ("file2".((14.(1 "da"))))))
+
+                    msg << file << ":"
                         << line << ": ";
                 }
 
-                // TODO: make filename shorten (relative to project path if
-                // possible
+                cout << "((" << file << " " << line << ") . ";
+
 
                 switch (it->getLevel()) {
                     case DiagnosticsEngine::Ignored:
@@ -635,6 +665,20 @@ void CDEIndexImpl::handleDiagnostics(uint32_t fileId,
         }
     }
     cout << "))" << endl;
+}
+
+string CDEIndexImpl::getLocStr(const SourceLocation &location,
+                 uint32_t *pos, uint32_t *line) {
+    SourceLocation expansionLoc(sm_->getExpansionLoc(location));
+    const FileEntry *fe = feFromLocation(expansionLoc);
+    if (fe != nullptr) {
+        *pos = sm_->getDecomposedLoc(expansionLoc).second;
+        if (line) {
+            *line = sm_->getExpansionLineNumber(expansionLoc);
+        }
+        return fe->getName();
+    }
+    return "<error>";
 }
 
 uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,
