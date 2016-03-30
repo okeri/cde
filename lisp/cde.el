@@ -257,8 +257,9 @@ other switches:
 (defun cde--idle-handler()
   (when cde--project
     (cde--error-disp)
-    (cde--map-unsaved)
     (when cde--buffer-changed
+      ;; TODO: workaround
+      (cde--map-unsaved)
       (setq cde--buffer-changed nil)
       (cde--send-command (concat "B " cde--project " "
 				 buffer-file-name " "

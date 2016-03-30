@@ -534,16 +534,6 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
         }
 
         const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
-        // std::map<uint32_t, uint32_t> currentSkips;
-        // for (const auto &s : skipped) {
-        //     uint32_t b, e, dummy, file;
-        //     file = getLoc(s.getBegin(), &dummy, &b);
-        //     if (file == getLoc(s.getEnd(), &dummy, &e) &&
-        //         file == info->second.getId()) {
-        //         currentSkips[b] = e - 1;
-        //     }
-        // }
-
         if (!skipped.empty()) {
             uint32_t b, e, dummy;
             string previousFile, file;
@@ -558,17 +548,10 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                         cout << "(\"" << file  << "\" ";
                         previousFile = file;
                     }
-                    cout << "(" << b << " " << e << ")";
+                    cout << "(" << b << " " << (e - 1) << ")";
                 }
             }
             cout << ")))" << endl;
-            //            string current =
-            //TODO: restore skipped
-            // cout << "(cde--hideif '(";
-            // for (const auto &it : skipped) {
-            //     cout << "(" << it.first  << " " << it.second << ")";
-            // }
-            // cout << "))" << endl;
         }
     }
 
@@ -581,7 +564,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
     if (unit) {
         context_ = &curr->getASTContext();
 
-        // TODO : clear records_ for specified unit.
+        // TODO: clear records_ for specified unit.
         // in this case we should also handle dependencies
         TraverseDecl(context_->getTranslationUnitDecl());
 
@@ -611,6 +594,34 @@ void CDEIndexImpl::handleDiagnostics(string actualFile,
                                      uint32_t stopLine) {
     stringstream msg;
     return;
+
+    vector<string> errors;
+    map<string, map<uint32_t, uint32_t> > positions;
+
+    for (const StoredDiagnostic* it = begin; it != end; ++it) {
+        if (*it) {
+            if (!onlyErrors ||
+                it->getLevel() == DiagnosticsEngine::Level::Error ||
+                it->getLevel() == DiagnosticsEngine::Level::Fatal) {
+                msg.str("");
+                uint32_t dummy, line;
+                string file = getLocStr(it->getLocation(),
+                                        &dummy, &line);
+                if (file == actualFile) {
+                    if (stopLine > 0 && line >= stopLine) {
+                        continue;
+                    }
+                    errors.push_back(it->getMessage().str());
+                    positions[file][line] = errors.size() - 1;
+                } else {
+                    errors.push_back(it->getMessage().str());
+                    // walk throw includes
+                }
+            }
+        }
+    }
+
+
     cout << "(cde--error-rep '(";
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
@@ -627,11 +638,13 @@ void CDEIndexImpl::handleDiagnostics(string actualFile,
                         continue;
                     }
                 } else {
-                    // TODO: redefine file-line to location where file included
-                    // from
+                    // TODO: clone message to include location
                     // TODO: make filename shorten (relative to project path if
                     // possible
                     // (setq diags '(("file1".((12.(1 "message1")) (13.(2 "msg2")))) ("file2".((14.(1 "da"))))))
+                    // or(message (file path) (file path) (file path)
+                    //2 vectors:(msg1 msg2 msg3)
+                    // (file.(line . severity index))
 
                     msg << file << ":"
                         << line << ": ";
