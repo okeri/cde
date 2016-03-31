@@ -381,7 +381,7 @@ other switches:
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
-(defun cde--error-rep(errors)
+(defun cde--error-rep(errors positions)
   ;; TODO: newfmt ((file line) . (type "report"))
   ;; i guess it will work following way:
   ;; check if error in foreign file = forget ? (handle on c++ side)
@@ -389,7 +389,8 @@ other switches:
   ;; set new overlays accordingly to error lines
   ;; when cursor pos is on a new line, cancel timer,
   ;; start a timer, if timer triggered, display error message
-  (dolist (err errors))
-  (message (nth 1 (car errors))))
+ ;; (dolist (err errors))
+  (message (car errors))
+  )
 
 (provide 'cde)

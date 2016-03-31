@@ -70,13 +70,12 @@ class CDEIndexImpl : public CDEIndex,
 
     uint32_t getLoc(const SourceLocation &location,
                     uint32_t *pos, uint32_t *line = nullptr);
-    void printIncludeLocTree(const SourceLocation &location);
     template <class D>
     inline void record(const SourceLocation &locRef, const D *decl,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void handleDiagnostics(string actualFile, const StoredDiagnostic *begin,
+    void handleDiagnostics(string tuFile, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
                            bool onlyErrors, uint32_t stopLine);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
@@ -362,6 +361,7 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
 // looks like in most cases we need only buffer of current file
 void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
                              uint32_t line, uint32_t column) {
+    string tuFile = info->first; // FIXME
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter == units_.end()) {
         if (!parse(info, true, 0)) {
@@ -400,7 +400,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     if (consumer.diag->hasErrorOccurred() ||
         consumer.diag->hasFatalErrorOccurred()) {
         sm_ = consumer.sourceMgr.get();
-        handleDiagnostics(info->first, consumer.diagnostics.begin(),
+        handleDiagnostics(tuFile, consumer.diagnostics.begin(),
                           consumer.diagnostics.end(), true, 0);
     }
 
@@ -421,13 +421,15 @@ static const char *getClangIncludeArg() {
 
 bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                          uint32_t stopLine) {
+    // TODO: if changed file is header, find TU and parse it
+    string tuFile = info->first; // FIXME
+    uint32_t realStopLine = tuFile == info->first ? stopLine : 0;
     // TODO: restore timecheck
     // if (!noTimeCheck &&
     //     info->second.time() > fileutil::fileTime(info->first)) {
     //     return true;
     // }
 
-    // TODO: if changed file is header, find TU and parse it
 
     currentUnit_ = &info->second;
     unique_ptr<ASTUnit> errUnit;
@@ -557,8 +559,8 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
 
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
-        handleDiagnostics(info->first, curr->stored_diag_begin(),
-                          curr->stored_diag_end(), false, stopLine);
+        handleDiagnostics(tuFile, curr->stored_diag_begin(),
+                          curr->stored_diag_end(), false, realStopLine);
         return false;
     }
     if (unit) {
@@ -573,109 +575,107 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
     }
 
     if (curr->stored_diag_begin() != curr->stored_diag_end()) {
-        handleDiagnostics(info->first, curr->stored_diag_begin(),
-                          curr->stored_diag_end(), false, stopLine);
+        handleDiagnostics(tuFile, curr->stored_diag_begin(),
+                          curr->stored_diag_end(), false, realStopLine);
     }
     return false;
 }
 
 
-void CDEIndexImpl::printIncludeLocTree(const SourceLocation &location) {
+static unsigned levelIndex(DiagnosticsEngine::Level level) {
+    switch (level) {
+        case DiagnosticsEngine::Note:
+        case DiagnosticsEngine::Remark:
+            return 1;
 
+        case DiagnosticsEngine::Warning:
+            return 2;
+
+        case DiagnosticsEngine::Error:
+        case DiagnosticsEngine::Fatal:
+            return 3;
+        default:
+            return 0;
+    }
 }
 
-// we will cache diagnostics,
-// so better way is to do something like ((file line) (file line) "report")
+static struct DiagPos {
+    unsigned level;
+    unsigned addPath;
+    size_t index;
+};
 
-void CDEIndexImpl::handleDiagnostics(string actualFile,
+
+void CDEIndexImpl::handleDiagnostics(string tuFile,
                                      const StoredDiagnostic *begin,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors,
                                      uint32_t stopLine) {
-    stringstream msg;
-    return;
-
     vector<string> errors;
-    map<string, map<uint32_t, uint32_t> > positions;
+    map<string, map<uint32_t, DiagPos> > positions;
 
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
-            if (!onlyErrors ||
-                it->getLevel() == DiagnosticsEngine::Level::Error ||
-                it->getLevel() == DiagnosticsEngine::Level::Fatal) {
-                msg.str("");
-                uint32_t dummy, line;
-                string file = getLocStr(it->getLocation(),
-                                        &dummy, &line);
-                if (file == actualFile) {
+            unsigned level = levelIndex(it->getLevel());
+            if (!onlyErrors || level == 3) {
+
+                FileID fileID = sm_->getFileID(sl);
+                bool invalid = false;
+                const SrcMgr::SLocEntry &sloc =
+                        sm_->getSLocEntry(fileID, &invalid);
+
+                if (invalid || !sloc.isFile()) {
+                    continue;
+                }
+
+                // register diagnostic message
+                errors.push_back(it->getMessage().str());
+
+                // init line and file
+                DiagPos pos({level, 1, errors.size() - 1});
+                string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+                uint32_t line = sm_->getExpansionLineNumber(sl);
+
+                // check if diagnostic is not intrested for us
+                if (file == tuFile) {
                     if (stopLine > 0 && line >= stopLine) {
                         continue;
                     }
-                    errors.push_back(it->getMessage().str());
-                    positions[file][line] = errors.size() - 1;
-                } else {
-                    errors.push_back(it->getMessage().str());
-                    // walk throw includes
                 }
+                // add chained diagnostic to headers
+                SourceLocation sl(it->getLocation());
+                while (file != tuFile) {
+                    FileID fileID = sm_->getFileID(sl);
+                    bool invalid = false;
+                    const SrcMgr::SLocEntry &sloc =
+                            sm_->getSLocEntry(fileID, &invalid);
+                    if (invalid || !sloc.isFile()) {
+                        break;
+                    }
+                    sl = sloc.getFile().getIncludeLoc();
+                    positions[file][line] = pos;
+                }
+                // add diagnostic to TU
+                pos.addPath = 0;
+                positions[file][line] = pos;
             }
         }
     }
 
-
     cout << "(cde--error-rep '(";
-    for (const StoredDiagnostic* it = begin; it != end; ++it) {
-        if (*it) {
-            if (!onlyErrors ||
-                it->getLevel() == DiagnosticsEngine::Level::Error ||
-                it->getLevel() == DiagnosticsEngine::Level::Fatal) {
-                msg.str("");
-
-                uint32_t dummy, line;
-                string file = getLocStr(it->getLocation(),
-                                        &dummy, &line);
-                if (file == actualFile) {
-                    if (stopLine > 0 && line >= stopLine) {
-                        continue;
-                    }
-                } else {
-                    // TODO: clone message to include location
-                    // TODO: make filename shorten (relative to project path if
-                    // possible
-                    // (setq diags '(("file1".((12.(1 "message1")) (13.(2 "msg2")))) ("file2".((14.(1 "da"))))))
-                    // or(message (file path) (file path) (file path)
-                    //2 vectors:(msg1 msg2 msg3)
-                    // (file.(line . severity index))
-
-                    msg << file << ":"
-                        << line << ": ";
-                }
-
-                cout << "((" << file << " " << line << ") . ";
-
-
-                switch (it->getLevel()) {
-                    case DiagnosticsEngine::Ignored:
-                    case DiagnosticsEngine::Note:
-                    case DiagnosticsEngine::Remark:
-                        msg << "note: ";
-                        break;
-
-                    case DiagnosticsEngine::Warning:
-                        msg << "warning: ";
-                        break;
-
-                    case DiagnosticsEngine::Error:
-                        msg << "error: ";
-                        break;
-
-                    case DiagnosticsEngine::Fatal:
-                        msg << "fatal error: ";
-                        break;
-                }
-                msg << it->getMessage().str();
-                cout << quoted(msg.str()) << ")";
-            }
+    // construct errors list
+    for (const auto& it : errors) {
+        cout << quoted(it) << " ";
+    }
+    cout << ") '(";
+    // construct position list
+    for (const auto& it : positions) {
+        cout << "(\"" << it.first << "\".(";
+        for (const auto& pit : it.second) {
+            cout << "(" << pit.first << ".(" << pit.second.level
+                 << " " << pit.second.index << " " << pit.second.addPath << "))";
         }
+        cout << "))";
     }
     cout << "))" << endl;
 }
