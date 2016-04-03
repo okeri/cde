@@ -18,6 +18,7 @@
 
 #include "cde.h"
 #include "gccsupport.h"
+#include "emacsmapper.h"
 
 #define DEFAULT_PATH         "/tmp"
 #define DEFAULT_GCC_PATH     "gcc"
@@ -67,8 +68,6 @@ int main(int argc, char *argv[]) {
     string command, last;
     vector<string> commands(8);
 
-    // TODO: add support for multiple unsaved files
-
     // Looks like we do not need error handling here :P
     while (getline(cin, command)) {
         commands.resize(0);
@@ -84,7 +83,8 @@ int main(int argc, char *argv[]) {
 
                 case 'B':
                     if (count == 4) {
-                        cde.check(commands[1], commands[2], stoi(commands[3]));
+                        cde.check(commands[1], commands[2], stoi(commands[3])
+                                  + 1);
                     }
                     break;
 
@@ -113,9 +113,11 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'M':
-                    // map/unmap
-                    // filename
-                    // filesize
+                    if (count == 3) {
+                        emacsMapper::map(commands[1], stoi(commands[2]));
+                    } else {
+                        emacsMapper::unmap(commands[1]);
+                    }
                     break;
 
                 case 'R':

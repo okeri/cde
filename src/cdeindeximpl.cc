@@ -36,6 +36,7 @@
 
 #include "cdeindex.h"
 #include "gccsupport.h"
+#include "emacsmapper.h"
 
 using namespace clang;
 
@@ -370,13 +371,6 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     }
 
     ASTUnit *unit = units_.find(info->second.getId())->second;
-    vector<ASTUnit::RemappedFile> remappedFiles;
-    // TODO: restore mappings
-    // if (!unsaved.empty()) {
-    //     unique_ptr<llvm::MemoryBuffer> MB =
-    //             llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
-    //     remappedFiles.push_back(make_pair(info->first, MB.release()));
-    // }
 
     CodeCompleteOptions opts;
     opts.IncludeBriefComments = 1;
@@ -385,7 +379,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
 
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
 
-    unit->CodeComplete(info->first, line, column, remappedFiles,
+    unit->CodeComplete(info->first, line, column, emacsMapper::mapped(),
                        opts.IncludeMacros, opts.IncludeCodePatterns,
                        opts.IncludeBriefComments,
                        consumer,
@@ -434,19 +428,11 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
     currentUnit_ = &info->second;
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
-    vector<ASTUnit::RemappedFile> remappedFiles;
-
-    // TODO: restore mapping
-    // if (!unsaved.empty()) {
-    //     unique_ptr<llvm::MemoryBuffer> MB =
-    //             llvm::MemoryBuffer::getMemBuffer(unsaved, info->first);
-    //     remappedFiles.push_back(make_pair(info->first, MB.release()));
-    // }
 
     const auto &unitIter = units_.find(info->second.getId());
     if (unitIter != units_.end()) {
         unit = unitIter->second;
-        unit->Reparse(pchOps_, remappedFiles);
+        unit->Reparse(pchOps_, emacsMapper::mapped());
     } else {
         vector<const char *> args;
         args.reserve(16);
@@ -481,7 +467,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
         // b. one header could have multiple parents
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, remappedFiles, false, 1,
+            pchOps_, diags, "", false, true, emacsMapper::mapped(), false, 1,
             TU_Complete,
             true, true, true, false, false, false, &errUnit);
 
@@ -532,6 +518,8 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                     getFile(id->getFile()->getName(), &parentFile->second);
                 }
                     break;
+                default:
+                    break;
             }
         }
 
@@ -553,16 +541,17 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                     cout << "(" << b << " " << (e - 1) << ")";
                 }
             }
-            cout << ")))" << endl;
+            cout << ")))";
         }
     }
 
+    handleDiagnostics(tuFile, curr->stored_diag_begin(),
+                      curr->stored_diag_end(), false, realStopLine);
     if (curr->getDiagnostics().hasErrorOccurred() ||
         curr->getDiagnostics().hasFatalErrorOccurred()) {
-        handleDiagnostics(tuFile, curr->stored_diag_begin(),
-                          curr->stored_diag_end(), false, realStopLine);
         return false;
     }
+
     if (unit) {
         context_ = &curr->getASTContext();
 
@@ -572,11 +561,6 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
 
         info->second.setTime(time(NULL));
         return true;
-    }
-
-    if (curr->stored_diag_begin() != curr->stored_diag_end()) {
-        handleDiagnostics(tuFile, curr->stored_diag_begin(),
-                          curr->stored_diag_end(), false, realStopLine);
     }
     return false;
 }
@@ -610,6 +594,10 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors,
                                      uint32_t stopLine) {
+    if (begin == end) {
+        cout << "(cde--error-rep nil nil nil)" << endl;
+        return;
+    }
     vector<string> errors;
     map<string, map<uint32_t, DiagPos> > directs;
     map<string, map<uint32_t, DiagPos> > links;
@@ -733,9 +721,11 @@ bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
             case NestedNameSpecifier::Namespace:
                 record(nnsl.getLocalBeginLoc(), nns->getAsNamespace());
                 break;
+
             case NestedNameSpecifier::NamespaceAlias:
                 record(nnsl.getLocalBeginLoc(), nns->getAsNamespaceAlias());
                 break;
+
             case NestedNameSpecifier::TypeSpec:
             case NestedNameSpecifier::TypeSpecWithTemplate:
                 if (const TypedefType *tt = nns->getAsType()
@@ -755,6 +745,8 @@ bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
                         }
                     }
                 }
+                break;
+            default:
                 break;
         }
         nnsl = nnsl.getPrefix();

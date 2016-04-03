@@ -42,6 +42,7 @@ void gccSupport::init(const std::string &path) {
             size_t end = result.find("End of search list.", start);
             if (end != std::string::npos) {
                 std::unordered_set<std::string> &includes = inst().includes_;
+                // TODO: transform ugly gcc paths like /blah/blah/../../blah
                 strBreak(result, [&includes]
                          (const char* head, size_t len) {
                              includes.emplace(std::string("-I") +

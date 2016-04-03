@@ -22,8 +22,25 @@
   "cde mode"
   :group 'c)
 
+(defface cde-hideif-face '((t :inherit mode-line-inactive))
+  "Face for shadowing ifdef blocks."
+  :group 'cde)
+
+(defface cde-error-face '((t :background "red"))
+  "Face for marking compilation errors"
+  :group 'cde)
+
+(defface cde-warning-face '((t :background "darkorange"))
+  "Face for marking compilation warnings"
+  :group 'cde)
+
+(defface cde-note-face '((t :background "darkorange"))
+  "Face for marking compilation notes"
+  :group 'cde)
+
+
 ;; user variables
-(defvar cde-args ""
+(defcustom cde-args ""
   "Additional arguments could be passed to cde,
 for example:
   'cde -C/tmp/cde' changes cde cache dir.
@@ -32,8 +49,8 @@ other switches:
   -P - enables PCH cache
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
-(defvar cde-debug nil "toggle debug buffer")
-(defvar cde-check 0 "experimental")
+(defcustom cde-debug nil "toggle debug buffer")
+(defcustom cde-check 0 "experimental")
 
 ;; internal variables
 (defvar cde--ring '())
@@ -178,10 +195,6 @@ other switches:
 	(int-to-string (car bounds)) nil)))
 
 
-(defun cde--buffer-size()
-  (int-to-string (- (point-max) (point-min))))
-
-
 (defun cde--ref-setup(items)
   (let ((refbuf (get-buffer-create "references")))
     (when (not (window-live-p cde--ref-window))
@@ -248,23 +261,28 @@ other switches:
 	    (save-buffer)
 	    (kill-buffer)))))))
 
-
 (defun cde--map-unsaved()
-  ;; for now just save buffers
-  ;; TODO : do real mapping (buffer-list)
-  (save-some-buffers t))
+  (let ((project cde--project)
+	(result nil))
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+	(when (and cde-mode (equal project cde--project) cde--buffer-changed)
+	  (setq result t)
+	  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
+	  							 (buffer-size))
+	  			     "\n" (buffer-string)))
+	  (setq cde--buffer-changed nil))))
+    result))
+
 
 (defun cde--idle-handler()
   (when cde--project
     (cde--error-disp)
-    (when cde--buffer-changed
-      ;; TODO: workaround
-      (cde--map-unsaved)
-      (cde--clear-diags)
-      (setq cde--buffer-changed nil)
+    (when (cde--map-unsaved)
       (cde--send-command (concat "B " cde--project " "
 				 buffer-file-name " "
-				 (int-to-string (line-number-at-pos)) "\n")))))
+				 (int-to-string (line-number-at-pos))
+						"\n")))))
 
 (defun cde--change (start end)
   (setq cde--buffer-changed t))
@@ -345,17 +363,17 @@ other switches:
 	      (if bounds (buffer-substring-no-properties
 			  (car bounds) (cdr bounds)) "")) "")))
 
-;; (defun cde--bcval-reset()
-;;   (if cde--buffer-changed
-;;       (prog2 (setq cde--buffer-changed nil) "1") "0"))
-
-
 (defun cde--line-to-pt(line)
   (save-excursion
     (goto-char (point-min))
     (forward-line line)
     (point)))
 
+(defun cde--line-bounds(line)
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line (- line 1))
+    (list (point) (+ (line-end-position) 1))))
 ;; emacs build-in hideif compatible ?
 ;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
 ;; is empty and it's not local... the possible solution is export preprocessor
@@ -372,7 +390,7 @@ other switches:
 		  (remove-overlays start end 'cde--hide-ifdef t)
 		  (let ((o (make-overlay start end)))
 		    (overlay-put o 'cde--hide-ifdef t)
-		    (overlay-put o 'face 'hide-ifdef-shadow)))))
+		    (overlay-put o 'face 'cde-hideif-face)))))
 	  (setq file e buf (get-file-buffer e)))))))
 
 (defun cde--error-disp()
@@ -383,45 +401,52 @@ other switches:
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
 
-(defun cde--clear-diags()
-  (dolist (b (buffer-list))
-    (with-current-buffer b
-      (when cde-mode
-	(setq cde--diags nil)
-	(remove-overlays nil nil 'cde--diag))))) ;;value?
+(defun cde--hl-line(line level)
+  (let* ((bounds (cde--line-bounds line))
+	 (start (nth 0 bounds))
+	 (end (nth 1 bounds))
+	 (o (make-overlay start end)))
+    (overlay-put o 'cde--diag t)
+    (cond ((= level 1)
+	   (overlay-put o 'face 'cde-note-face))
+	  ((= level 2)
+	   (overlay-put o 'face 'cde-warning-face))
+	  ((= level 3)
+	   (overlay-put o 'face 'cde-error-face)))))
 
 (defun cde--error-rep(errors regulars links)
-  (dolist (pos regulars)
-    (let* ((file (nth 0 pos))
-  	   (buf (get-file-buffer file)))
-      (dolist (diag (cdr pos))
-	(let* ((data (nth 1 diag))
-	       (line (nth 0 diag))
-	       (level (nth 0 data))
-	       (index (nth 1 data))
-	       (msg (aref errors index)))
+  (let ((project cde--project))
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+	(when (and cde-mode (equal project cde--project))
+	  (setq-local cde--diags nil)
+	  (remove-overlays nil nil 'cde--diag t)))))
+  (when errors
+    (dolist (pos regulars)
+      (let* ((file (nth 0 pos))
+	     (buf (get-file-buffer file)))
+	(dolist (diag (cdr pos))
+	  (let* ((data (nth 1 diag))
+		 (line (nth 0 diag))
+		 (level (nth 0 data))
+		 (index (nth 1 data))
+		 (msg (aref errors index)))
+	    (when buf
+	      (with-current-buffer buf
+		(cde--hl-line line level)
+		(push (cons line (list level msg)) cde--diags)))
+	    (aset errors index (concat file ":" (int-to-string line)
+				       ": " msg)))))
+      (dolist (pos links)
+	(let ((buf (get-file-buffer (nth 0 pos))))
 	  (when buf
 	    (with-current-buffer buf
-	      (push (cons line (list level msg)) cde--diags)))
-	  (aset errors index (concat file ":" (int-to-string line) ":" msg)))))
-
-  (dolist (pos links)
-    (let ((buf (get-file-buffer (nth 0 pos))))
-      (when buf
-  	(with-current-buffer buf
-  	  (dolist (diag (cdr pos))
-  	    (let ((data (nth 1 diag)))
-  	      (push (cons (nth 0 diag)
-  			  (list (nth 0 data) (aref errors (nth 1 data))))
-  		    cde--diags)))))))))
-  ;; TODO: loop throuw all buffers and reset diags
-  ;; i guess it will work following way:
-  ;; check if error in foreign file = forget ? (handle on c++ side)
-  ;; set new overlays accordingly to error lines
-  ;; when cursor pos is on a new line, cancel timer,
-  ;; start a timer, if timer triggered, display error message
- ;; (dolist (err errors))
-;  (message (car errors))
-(global-set-key [f2] (lambda () (interactive) (print cde--diags)))
+	      (dolist (diag (cdr pos))
+		(let* ((data (nth 1 diag))
+		       (line (nth 0 diag))
+		       (level (nth 0 data)))
+		  (cde--hl-line line level)
+		  (push (cons line (list level (aref errors (nth 1 data))))
+			cde--diags))))))))))
 
 (provide 'cde)

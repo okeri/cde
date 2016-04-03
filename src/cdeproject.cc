@@ -162,7 +162,7 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     }
 }
 
-// TODO: use weighs calculation for findfile/swapSrcHdr
+// TODO: use score calculation for findfile/swapSrcHdr
 void CDEProject::findfile(const string &filename, const string &parent) {
     const SourceIter &it = index_->findFile(filename);
     if (it != index_->files_.end()) {
@@ -259,15 +259,6 @@ void CDEProject::scanProject() {
     }
     cout << "(dframe-message \"Done!\")" << endl;
 }
-
-// TODO: move mapping to separate module
-// void CDEProject::readFromStdIn(size_t size, string* buf) {
-//     if (size) {
-//         buf->resize(size);
-//         cin.read(const_cast<char*>(buf->data()), size);
-//     }
-// }
-
 
 void CDEProject::check(const string &filename, uint32_t line) {
     updateProjectFile(filename, line);
