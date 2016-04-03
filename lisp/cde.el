@@ -260,6 +260,7 @@ other switches:
     (when cde--buffer-changed
       ;; TODO: workaround
       (cde--map-unsaved)
+      (cde--clear-diags)
       (setq cde--buffer-changed nil)
       (cde--send-command (concat "B " cde--project " "
 				 buffer-file-name " "
@@ -377,20 +378,50 @@ other switches:
 (defun cde--error-disp()
   (let ((current (assq (line-number-at-pos) cde--diags)))
     (when current
-      (dframe-message (nth 1 (nth 1 current))))))
+      (dframe-message (nth 2 current)))))
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
-(defun cde--error-rep(errors positions)
-  ;; TODO: newfmt ((file line) . (type "report"))
+
+(defun cde--clear-diags()
+  (dolist (b (buffer-list))
+    (with-current-buffer b
+      (when cde-mode
+	(setq cde--diags nil)
+	(remove-overlays nil nil 'cde--diag))))) ;;value?
+
+(defun cde--error-rep(errors regulars links)
+  (dolist (pos regulars)
+    (let* ((file (nth 0 pos))
+  	   (buf (get-file-buffer file)))
+      (dolist (diag (cdr pos))
+	(let* ((data (nth 1 diag))
+	       (line (nth 0 diag))
+	       (level (nth 0 data))
+	       (index (nth 1 data))
+	       (msg (aref errors index)))
+	  (when buf
+	    (with-current-buffer buf
+	      (push (cons line (list level msg)) cde--diags)))
+	  (aset errors index (concat file ":" (int-to-string line) ":" msg)))))
+
+  (dolist (pos links)
+    (let ((buf (get-file-buffer (nth 0 pos))))
+      (when buf
+  	(with-current-buffer buf
+  	  (dolist (diag (cdr pos))
+  	    (let ((data (nth 1 diag)))
+  	      (push (cons (nth 0 diag)
+  			  (list (nth 0 data) (aref errors (nth 1 data))))
+  		    cde--diags)))))))))
+  ;; TODO: loop throuw all buffers and reset diags
   ;; i guess it will work following way:
   ;; check if error in foreign file = forget ? (handle on c++ side)
-  ;; (remove-overlays start end 'cde--error t)
   ;; set new overlays accordingly to error lines
   ;; when cursor pos is on a new line, cancel timer,
   ;; start a timer, if timer triggered, display error message
  ;; (dolist (err errors))
-  (message (car errors))
-  )
+;  (message (car errors))
+(global-set-key [f2] (lambda () (interactive) (print cde--diags)))
 
 (provide 'cde)

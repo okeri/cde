@@ -422,7 +422,7 @@ static const char *getClangIncludeArg() {
 bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                          uint32_t stopLine) {
     // TODO: if changed file is header, find TU and parse it
-    string tuFile = info->first; // FIXME
+    string tuFile = info->first;
     uint32_t realStopLine = tuFile == info->first ? stopLine : 0;
     // TODO: restore timecheck
     // if (!noTimeCheck &&
@@ -517,7 +517,7 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                     break;
                 case PreprocessedEntity::EntityKind::InclusionDirectiveKind: {
                     InclusionDirective *id(cast<InclusionDirective>(it));
-                    const FileEntry *fe = feFromLocation(//sm_->getExpansionLoc(
+                    const FileEntry *fe = feFromLocation(
                         id->getSourceRange().getBegin());
 
 
@@ -599,9 +599,8 @@ static unsigned levelIndex(DiagnosticsEngine::Level level) {
     }
 }
 
-static struct DiagPos {
+struct DiagPos {
     unsigned level;
-    unsigned addPath;
     size_t index;
 };
 
@@ -612,16 +611,17 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                                      bool onlyErrors,
                                      uint32_t stopLine) {
     vector<string> errors;
-    map<string, map<uint32_t, DiagPos> > positions;
+    map<string, map<uint32_t, DiagPos> > directs;
+    map<string, map<uint32_t, DiagPos> > links;
 
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
             unsigned level = levelIndex(it->getLevel());
             if (!onlyErrors || level == 3) {
-
+                SourceLocation sl(it->getLocation());
                 FileID fileID = sm_->getFileID(sl);
                 bool invalid = false;
-                const SrcMgr::SLocEntry &sloc =
+                SrcMgr::SLocEntry sloc =
                         sm_->getSLocEntry(fileID, &invalid);
 
                 if (invalid || !sloc.isFile()) {
@@ -632,51 +632,66 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 errors.push_back(it->getMessage().str());
 
                 // init line and file
-                DiagPos pos({level, 1, errors.size() - 1});
+                DiagPos pos({level, errors.size() - 1});
                 string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
                 uint32_t line = sm_->getExpansionLineNumber(sl);
-
                 // check if diagnostic is not intrested for us
                 if (file == tuFile) {
                     if (stopLine > 0 && line >= stopLine) {
                         continue;
                     }
                 }
-                // add chained diagnostic to headers
-                SourceLocation sl(it->getLocation());
+
+                // add diagnostic to current file
+                directs[file][line] = pos;
+
+                // add includes chain
                 while (file != tuFile) {
-                    FileID fileID = sm_->getFileID(sl);
-                    bool invalid = false;
-                    const SrcMgr::SLocEntry &sloc =
-                            sm_->getSLocEntry(fileID, &invalid);
+                    sl = sloc.getFile().getIncludeLoc();
+                    fileID = sm_->getFileID(sl);
+                    sloc = sm_->getSLocEntry(fileID, &invalid);
                     if (invalid || !sloc.isFile()) {
                         break;
                     }
-                    sl = sloc.getFile().getIncludeLoc();
-                    positions[file][line] = pos;
+                    file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+                    line = sm_->getExpansionLineNumber(sl);
+                    if ((links.find(file) == links.end() ||
+                         links[file].find(line) == links[file].end()) &&
+                        (directs.find(file) == directs.end() ||
+                         directs[file].find(line) == directs[file].end())) {
+                        links[file][line] = pos;
+                    }
                 }
-                // add diagnostic to TU
-                pos.addPath = 0;
-                positions[file][line] = pos;
             }
         }
     }
 
-    cout << "(cde--error-rep '(";
+    cout << "(cde--error-rep [";
     // construct errors list
     for (const auto& it : errors) {
         cout << quoted(it) << " ";
     }
-    cout << ") '(";
-    // construct position list
-    for (const auto& it : positions) {
+    cout << "] '(";
+    // construct direct position list
+    for (const auto& it : directs) {
         cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
             cout << "(" << pit.first << ".(" << pit.second.level
-                 << " " << pit.second.index << " " << pit.second.addPath << "))";
+                 << " " << pit.second.index << "))";
         }
         cout << "))";
     }
+    cout << ") '(";
+    // construct links position list
+    for (const auto& it : links) {
+        cout << "(\"" << it.first << "\".(";
+        for (const auto& pit : it.second) {
+            cout << "(" << pit.first << ".(" << pit.second.level
+                 << " " << pit.second.index << "))";
+        }
+        cout << "))";
+    }
+
     cout << "))" << endl;
 }
 
