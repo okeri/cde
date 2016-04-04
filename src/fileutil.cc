@@ -16,6 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
+#include <iostream>
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -208,4 +209,32 @@ void mkdir(const std::string& path) {
     ::mkdir(path.c_str(), 0700);
 
 }
+
+/** remove ugly ../../ from path */
+std::string purify(const std::string &path) {
+    std::string ret(path);
+    size_t tokd, tok = ret.rfind("/..");
+    while (tok != std::string::npos) {
+        size_t lev = 0;
+        tokd = ret.rfind(SEPARATOR, tok - 1);
+        while (tokd != std::string::npos && ret[tokd + 1] == '.'
+               && ret[tokd + 2] == '.') {
+            lev++;
+            tokd = ret.rfind(SEPARATOR, tokd - 1);
+        }
+
+        while (tokd != std::string::npos && lev > 0) {
+            tokd = ret.rfind(SEPARATOR, tokd - 1);
+            lev--;
+        }
+
+        if (tokd == std::string::npos) {
+            return path;
+        }
+        ret = ret.erase(tokd, tok - tokd + 3);
+        tok = ret.rfind("/..");
+    }
+    return ret;
+}
+
 }  // namespace

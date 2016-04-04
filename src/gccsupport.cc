@@ -19,12 +19,13 @@
 #include <string.h>
 #include <iostream>
 #include "gccsupport.h"
-
+#include "fileutil.h"
 
 gccSupport& gccSupport::inst() {
     static gccSupport instance;
     return instance;
 }
+
 
 void gccSupport::init(const std::string &path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
@@ -42,11 +43,11 @@ void gccSupport::init(const std::string &path) {
             size_t end = result.find("End of search list.", start);
             if (end != std::string::npos) {
                 std::unordered_set<std::string> &includes = inst().includes_;
-                // TODO: transform ugly gcc paths like /blah/blah/../../blah
                 strBreak(result, [&includes]
                          (const char* head, size_t len) {
                              includes.emplace(std::string("-I") +
-                                              std::string(head, len));
+                                              fileutil::purify(std::string(head,
+                                                                        len)));
                              return true;
                          }, start, end);
             } else {

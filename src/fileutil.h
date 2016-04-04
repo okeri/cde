@@ -33,6 +33,7 @@ bool isHeader(const std::string &path);
 void deleteTrailingSep(std::string *path);
 void addTrailingSep(std::string *path);
 std::string dirUp(const std::string &path);
+std::string purify(const std::string &path);
 std::string basenameNoExt(const std::string &filename);
 std::string extension(const std::string &filename);
 uint32_t fileTime(const std::string &filename);
