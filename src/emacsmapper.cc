@@ -25,27 +25,27 @@ emacsMapper& emacsMapper::inst() {
     return instance;
 }
 
+
 std::vector<emacsMapper::LLVMRemappedFile> &emacsMapper::mapped() {
     return inst().mapped_;
 }
 
 
-void emacsMapper::map(const std::string &filename, size_t len) {
-    std::vector<emacsMapper::LLVMRemappedFile> &mapped = inst().mapped_;
+void emacsMapper::map(const std::string &filename, size_t size) {
     unmap(filename);
-    // TODO: memory leak
-    std::string *data= new std::string;
 
-    data->resize(len);
-    if (len) {
-        std::cin.read(const_cast<char*>(data->data()), len);
+    llvm::MemoryBuffer *buffer = llvm::MemoryBuffer::getNewUninitMemBuffer(size)
+            .release();
+
+    if (size) {
+        std::cin.read(const_cast<char*>(buffer->getBufferStart()), size);
     }
-    mapped.emplace_back(filename, llvm::MemoryBuffer::
-                        getMemBuffer(*data, filename) .release());
+    inst().mapped_.emplace_back(filename, buffer);
 }
 
+
 void emacsMapper::unmap(const std::string &filename) {
-    std::vector<emacsMapper::LLVMRemappedFile> &mapped = inst().mapped_;
+    auto &mapped = inst().mapped_;
     const auto &removed  = remove_if(mapped.begin(), mapped.end(),
                            [filename](const auto& f) {
                                return f.first == filename;

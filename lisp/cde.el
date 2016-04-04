@@ -160,11 +160,11 @@ other switches:
       (prog2 (process-send-string cde--process "Q\n") nil) t))
 
 
-;;;###autoload
+;;;;###autoload
 (define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
   (if cde-mode (cde--init)  (cde--deinit)))
 
-;;;###autoload
+;;;;###autoload
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
@@ -215,7 +215,7 @@ other switches:
 	  (insert (propertize item 'face 'font-lock-type-face) "\n")))
       (setq-local buffer-read-only t)
       (goto-char (point-min))
-      (local-set-key (kbd "RET") 'cde--ref-jmp))))
+      (local-set-key (kbd "RET") 'cde-ref-jmp))))
 
 
 ;; TODO: rewrite this function aims to convert build output to
@@ -421,7 +421,7 @@ other switches:
 	(when (and cde-mode (equal project cde--project))
 	  (setq-local cde--diags nil)
 	  (remove-overlays nil nil 'cde--diag t)))))
-  (when errors
+  (if errors
     (dolist (pos regulars)
       (let* ((file (nth 0 pos))
 	     (buf (get-file-buffer file)))

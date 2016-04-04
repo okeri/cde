@@ -34,6 +34,6 @@ class emacsMapper {
     emacsMapper(const emacsMapper&) = delete;
     emacsMapper& operator=(const emacsMapper &) = delete;
     static std::vector<LLVMRemappedFile> &mapped();
-    static void map(const std::string &, size_t);
+    static void map(const std::string &, size_t sizes);
     static void unmap(const std::string &);
 };
