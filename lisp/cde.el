@@ -89,8 +89,8 @@ other switches:
 		 (line-beginning-position) (line-end-position))))
       (if (string-match cde--include-re line)
 	  (cde--send-command (concat "F " cde--project " "
-				       buffer-file-name " "
-				       (match-string 1 line) "\n"))
+				     buffer-file-name " "
+				     (match-string 1 line) "\n"))
 	(cde--send-command (concat "D " cde--project " "
 				   buffer-file-name " "
 				   (cde--sympos-string) "\n"))))))
@@ -141,7 +141,7 @@ other switches:
   "Suggest to compile of project directory"
   (interactive)
   (when (or (not (boundp 'compile-history))
-	     (= (length compile-history) 0))
+	    (= (length compile-history) 0))
     (setq compile-history '("make -k "))
     (when cde--project
       (push (concat "make -k -C " cde--project " ") compile-history))
@@ -203,7 +203,7 @@ other switches:
       (setq cde--ref-window (split-window-right))
       (set-window-buffer cde--ref-window refbuf)
 
-    (select-window cde--ref-window))
+      (select-window cde--ref-window))
 
     (with-current-buffer refbuf
       (setq-local buffer-read-only nil)
@@ -282,7 +282,7 @@ other switches:
       (cde--send-command (concat "B " cde--project " "
 				 buffer-file-name " "
 				 (int-to-string (line-number-at-pos))
-						"\n")))))
+				 "\n")))))
 
 (defun cde--change (start end)
   (setq cde--buffer-changed t))
@@ -335,8 +335,7 @@ other switches:
       (with-current-buffer cde--process-buffer
 	(setq cmds (car (read-from-string
 			 (concat "(progn " (buffer-string) ")"))))
-	(erase-buffer)
-	)
+	(erase-buffer))
       (eval cmds))))
 
 (defun cde--send-command(cmd)

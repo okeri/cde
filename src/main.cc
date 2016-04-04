@@ -23,12 +23,6 @@
 #define DEFAULT_PATH         "/tmp"
 #define DEFAULT_GCC_PATH     "gcc"
 
-void stringToArgv(const string& inp, vector<string> *v) {
-    strBreak(inp, [v](const char* head, size_t len) {
-            v->emplace_back(head, len);
-            return true;
-        });
-}
 
 int main(int argc, char *argv[]) {
     string path(DEFAULT_PATH);
@@ -71,7 +65,11 @@ int main(int argc, char *argv[]) {
     // Looks like we do not need error handling here :P
     while (getline(cin, command)) {
         commands.resize(0);
-        stringToArgv(command, &commands);
+        strBreak(command, [&commands](const char* head, size_t len) {
+            commands.emplace_back(head, len);
+            return true;
+        });
+
         unsigned count = commands.size();
         if (count > 0) {
             switch (commands[0][0]) {

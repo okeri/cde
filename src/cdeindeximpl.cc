@@ -583,6 +583,8 @@ static unsigned levelIndex(DiagnosticsEngine::Level level) {
     }
 }
 
+
+// TODO: std::pair ?
 struct DiagPos {
     unsigned level;
     size_t index;
@@ -601,7 +603,6 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
     vector<string> errors;
     map<string, map<uint32_t, DiagPos> > directs;
     map<string, map<uint32_t, DiagPos> > links;
-
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
             unsigned level = levelIndex(it->getLevel());
@@ -619,10 +620,10 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 // register diagnostic message
                 errors.push_back(it->getMessage().str());
 
-                // init line and file
-                DiagPos pos({level, errors.size() - 1});
                 string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+                DiagPos pos({level, errors.size() - 1});
                 uint32_t line = sm_->getExpansionLineNumber(sl);
+
                 // check if diagnostic is not intrested for us
                 if (file == tuFile) {
                     if (stopLine > 0 && line >= stopLine) {
