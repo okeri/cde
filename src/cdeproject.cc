@@ -59,11 +59,17 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
         } else if (key.get_size() == sizeof(uint32_t)) {
             pack =
                     static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
-            index_->files_.emplace(
-                piecewise_construct, make_tuple(pack->filename),
-                make_tuple(*static_cast<uint32_t*>(key.get_data()),
-                           &index_->fileInfo(pack->pid)->second,
-                           pack->updated_time));
+            // FIXME const_cast
+            SourceInfo *current(const_cast<SourceInfo*>(&(
+                *index_->files_.emplace(
+                    *static_cast<uint32_t*>(key.get_data()), pack->filename(),
+                    pack->updated_time).first)));
+
+            // make links
+            uint32_t *parents  = pack->parents();
+            for (auto i = 0; i < pack->parent_count; ++i) {
+                index_->link(current, parents[i]);
+            }
         }
         res = curs->get(&key, &data, DB_NEXT);
     }
@@ -96,14 +102,14 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 
 
 void CDEProject::updateProjectFile(const string &filename, uint32_t line) {
-    updateProjectFile(index_->getFile(filename.c_str()), line);
+    index_->parse(index_->getFile(filename.c_str()));
 }
 
 
 void CDEProject::definition(const string &filename, uint32_t pos) {
-    const SourceIter &si = index_->getFile(filename);
-    updateProjectFile(si);
-    CI_KEY ref({si->second.getId(), pos});
+    SourceInfo *si = index_->getFile(filename);
+    index_->parse(si);
+    CI_KEY ref({si->getId(), pos});
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
         const CI_DATA &def = defIt->second;
@@ -119,11 +125,11 @@ void CDEProject::definition(const string &filename, uint32_t pos) {
 
 
 void CDEProject::references(const string &filename, uint32_t pos) {
-    const SourceIter &si = index_->getFile(filename);
-    updateProjectFile(si);
-    uint32_t file = si->second.getId(),
+    SourceInfo *si = index_->getFile(filename);
+    index_->parse(si);
+    uint32_t file = si->getId(),
             dfile = INVALID, dpos;
-    map<CI_KEY, uint32_t> results;
+    unordered_map<CI_KEY, uint32_t> results;
 
     for (const auto& r: index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
@@ -164,20 +170,23 @@ void CDEProject::references(const string &filename, uint32_t pos) {
 
 // TODO: use score calculation for findfile/swapSrcHdr
 void CDEProject::findfile(const string &filename, const string &parent) {
-    const SourceIter &it = index_->findFile(filename);
-    if (it != index_->files_.end()) {
-        cout << "(find-file \"" << it->first << "\")" << endl;
+    const SourceInfo *si = index_->findFile(filename);
+    if (si != nullptr) {
+        cout << "(find-file \"" << si->fileName() << "\")" << endl;
     } else {
-        const SourceIter &pit = index_->getFile(parent);
+        const SourceInfo *psi = index_->getFile(parent);
         unordered_set<string> includes;
         includes.insert(fileutil::dirUp(parent));
-        pit->second.fillIncludes(&includes);
+        psi->fillIncludes(&includes);
         for (const auto& include_path : includes) {
             string test = include_path;
             fileutil::addTrailingSep(&test);
             test += filename;
             if (fileutil::fileExists(test)) {
-                index_->getFile(test, &pit->second);
+                index_->getFile(test);
+                if (fileutil::isHeader(test)) {
+                    index_->link(test, psi);
+                }
                 cout << "(find-file \"" << test << "\")" << endl;
                 return;
             }
@@ -214,11 +223,11 @@ void CDEProject::swapSrcHdr(const string &filename) {
 
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
-            const SourceIter &it = index_->getFile(filename);
+            const SourceInfo *si = index_->getFile(filename);
             unordered_set<string> includes;
             string test;
             includes.insert(fileutil::dirUp(filename));
-            it->second.fillIncludes(&includes);
+            si->fillIncludes(&includes);
             for (const auto& include_path : includes) {
                 test = include_path;
                 fileutil::addTrailingSep(&test);
@@ -227,6 +236,9 @@ void CDEProject::swapSrcHdr(const string &filename) {
                     string testfile = test + exts[extIter][i];
                     if (fileutil::fileExists(testfile)) {
                         index_->getFile(testfile);
+                        if (fileutil::isHeader(testfile)) {
+                            index_->link(testfile, si);
+                        }
                         cout << "(find-file \"" << testfile << "\")" << endl;
                         return;
                      }
@@ -240,14 +252,14 @@ end:
 }
 
 bool CDEProject::fileInProject(const string &filename) const {
-    return index_->findFile(filename) != index_->files_.end();
+    return index_->findFile(filename) != nullptr;
 }
 
 
 void CDEProject::acknowledge(const string &filename) {
     cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
          << endl;
-    updateProjectFile(filename);
+    index_->preprocess(index_->getFile(filename));
 }
 
 void CDEProject::scanProject() {
@@ -274,12 +286,12 @@ CDEProject::~CDEProject() {
     // Store file info
     uint32_t num;
     Dbt key(&num, sizeof(uint32_t));
-    unsigned char pack[512];
+    unsigned char pack[1024];
 
     for (const auto& it: index_->files_) {
-        uint32_t size = it.second.fillPack(it.first, pack);
+        uint32_t size = it.fillPack(pack);
         Dbt data(pack, size);
-        num = it.second.getId();
+        num = it.getId();
         db_.put(NULL, &key, &data, 0);
     }
 
@@ -291,6 +303,5 @@ CDEProject::~CDEProject() {
     }
     delete index_;
 
-    cout << "(prog1 (setq cde--process nil)"
-         << "(save-buffers-kill-terminal))" << endl;
+    cout << "(setq cde--process nil)(save-buffers-kill-terminal)" << endl;
 }

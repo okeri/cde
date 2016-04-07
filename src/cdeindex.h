@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
 #include "fileutil.h"
@@ -82,37 +82,47 @@ struct CI_KEY {
 
 #pragma pack(pop)
 
+//if parents_.size == 0, sourceinfo is root
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
+    string filename_;
     vector<string> args_;
+    vector<const SourceInfo *> parents_;
 
-    // TODO: add support for multiple parents
-    // replace with vector<sourceIter> ?
-    const SourceInfo *parent_;
+    friend class CDEIndex;
+    friend struct std::hash<SourceInfo>;
 
     inline const vector<string> &args() const {
-        const SourceInfo *token = this;
-        while (token->parent_ != nullptr && token->args_.empty()) {
-            token  = token->parent_;
-        }
-        return token->args_;
+        return getDominatedParent()->args_;
     }
 
   public:
     struct SourceInfoPacked {
-        uint32_t pid;
         uint32_t updated_time;
-        char filename[1];
+        uint32_t parent_count;
+
+        inline uint32_t *parents() {
+            return reinterpret_cast<uint32_t*>(this) + 2;
+        }
+
+        inline char *filename() {
+            return reinterpret_cast<char *>(
+                parents() + sizeof(uint32_t) * parent_count);
+        }
     };
 
-    SourceInfo(uint32_t fid, const SourceInfo *parent,
+    SourceInfo(uint32_t fid, const string& filename,
                uint32_t updated_time = 0)
-            : fileId_(fid), updated_time_(updated_time),
-              parent_(parent) {}
+            : fileId_(fid), filename_(filename),
+              updated_time_(updated_time) {}
 
     inline uint32_t getId() const {
         return fileId_;
+    }
+
+    inline const string& fileName() const {
+        return filename_;
     }
 
     inline void setArgs(const string& args) {
@@ -123,21 +133,26 @@ class SourceInfo {
             });
     }
 
-    uint32_t fillPack(const string& filename, void *pack) const {
-        size_t size(65 + filename.length());
+    size_t fillPack(void *pack) const {
         SourceInfoPacked *data = static_cast<SourceInfoPacked*> (
             pack);
-        data->pid = parent_ != nullptr ? parent_->fileId_ : 0;
+        data->parent_count = parents_.size();
         data->updated_time = updated_time_;
-        strcpy(data->filename, filename.c_str());
-        return size;
+
+
+        uint32_t *parents  = data->parents();
+        for (unsigned i = 0; i < data->parent_count; ++i) {
+            parents[i] = parents_[i]->getId();
+        }
+        strcpy(data->filename(), filename_.c_str());
+        return 65 + filename_.length() + sizeof(uint32_t) * data->parent_count;
     }
 
     void setTime(uint32_t updated_time) {
         updated_time_ = updated_time;
     }
 
-    uint32_t time() {
+    uint32_t time() const {
         return updated_time_;
     }
 
@@ -154,7 +169,7 @@ class SourceInfo {
     void fillIncludes(unordered_set<string> *includes) const {
         const vector<string> &arguments = args();
         for (const auto &s : arguments) {
-            if (s.length() > 2 && s[0] == '-' && s[1]=='I') {
+            if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
                 includes->emplace(s.c_str() + 2, s.length() - 2);
             }
         }
@@ -166,91 +181,165 @@ class SourceInfo {
             clang_args->push_back(s.c_str());
         }
     }
+
+    inline const SourceInfo* getDominatedParent() const {
+        const SourceInfo *token = this;
+        while (token->parents_.size() != 0 && token->args_.empty()) {
+            token  = token->parents_[0];
+        }
+        return token;
+    }
+
+    bool operator==(const SourceInfo& rhs) const {
+        return filename_ == rhs.filename_;
+    }
 };
 
-typedef map<string, SourceInfo>::iterator SourceIter;
+namespace std {
+
+template <>
+struct hash<CI_KEY> {
+    size_t operator()(const CI_KEY& k) const {
+        return hash<int>()(k.file) ^ (hash<int>()(k.pos) << 1);
+    }
+};
+
+template <>
+struct hash<SourceInfo> {
+    size_t operator()(const SourceInfo& k) const {
+        return hash<string>()(k.filename_) ^ (hash<int>()(k.fileId_) << 1);
+    }
+};
+
+}
+
 
 class CDEIndex {
-    SourceIter root_;
+    SourceInfo *root_;
+
+    inline void eliminateRootParent(SourceInfo *si) {
+        if (si->parents_.size() == 1 && si->parents_[0] == root_) {
+            si->parents_.resize(0);
+        }
+    }
 
   protected:
     string storePath_;
 
   public:
-    map<CI_KEY, CI_DATA> records_;
-    map<string, SourceInfo> files_;
+    // TODO: records_ -> bimap ???
+    unordered_map<CI_KEY, CI_DATA> records_;
+    // TODO: make files_  multi indexed
+    unordered_set<SourceInfo> files_;
 
   public:
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
-        root_ = files_.emplace(piecewise_construct, forward_as_tuple(projPath),
-                       forward_as_tuple(0, nullptr)).first;
+        root_ = const_cast<SourceInfo*>(&(*files_.emplace(0, projPath).first));
+    }
+
+    /** get SourceInfo or nullptr by filename */
+    SourceInfo* fileInfo(const string &filename) {
+        static SourceInfo needed(0,"");
+        needed.filename_ =  filename;
+        auto it = files_.find(needed);
+        if (it != files_.end()) {
+            return const_cast<SourceInfo*>(&(*it));
+        }
+        return nullptr;
+    }
+    /** get SourceInfo or nullptr by file id */
+    SourceInfo* fileInfo(uint32_t fid) {
+        for (auto it = begin(files_); it != end(files_); ++it) {
+            if (it->getId() == fid) {
+                return const_cast<SourceInfo*>(&(*it));
+            }
+        }
+        return nullptr;
     }
 
     /** find files in index  ending with filename*/
-    const SourceIter findFile(const string &filename) {
-        const SourceIter &end = files_.end();
-        return find_if(
+    const SourceInfo* findFile(const string &filename) {
+        const auto &end = files_.end();
+        auto it = find_if(
             files_.begin(), end,
-            [filename] (const pair<string, SourceInfo> &p) {
-                return fileutil::endsWith(p.first, filename);
+            [filename] (const SourceInfo &si) {
+                return fileutil::endsWith(si.fileName(), filename);
             });
+        if (it != end) {
+            return &(*it);
+        }
+        return nullptr;
     }
-    /** get translation unit for current file*/
-    // const SourceIter getTU(const string &filename) {
-    //     if (fileutil::isHeader(filename)) {
 
-    //     } else {
-    //         return getFile(filename);
-    //     }
-    // }
+    /** get translation unit for current file*/
+    SourceInfo* getAnyTU(SourceInfo *info) {
+        SourceInfo *token = info;
+        while (token->parents_.size() != 1 || token->parents_[0] != root_) {
+            //            token = token->parents_.at(0);
+        }
+        return token;
+    }
+
+    /** get all translation units for current file*/
+    const vector<SourceInfo*> getAllTUs(const string &filename) {
+        vector<SourceInfo *> ret;
+
+        return ret;
+    }
+
     /** get a file from index, or add it if files is not present in index*/
-    const SourceIter getFile(const string &filename,
-                             const SourceInfo *parent = nullptr) {
-        const auto &it = files_.find(filename);
-        if (it != files_.end()) {
-            return it;
+    SourceInfo * getFile(const string &filename) {
+        SourceInfo *info = fileInfo(filename);
+        if (info != nullptr) {
+            return info;
         } else {
             uint32_t nval = files_.size() + 1;
-            return files_.emplace(piecewise_construct,
-                                  forward_as_tuple(filename),
-                                  forward_as_tuple(nval, parent != nullptr ?
-                                                   parent : &root_->second))
-                    .first;
+            info =  const_cast<SourceInfo*>(
+                &(*files_.emplace(nval, filename).first));
+            // assume this file is TU
+            info->parents_.push_back(root_);
+        }
+        return nullptr;
+    }
+
+    inline void link(SourceInfo *info, uint32_t pid) {
+        SourceInfo *psi = fileInfo(pid);
+        if (psi != nullptr) {
+            eliminateRootParent(info);
+            info->parents_.push_back(psi);
         }
     }
 
-    inline const SourceIter fileInfo(uint32_t fid) {
-        for (auto it = begin(files_); it != end(files_); ++it) {
-            if (it->second.getId() == fid) {
-                return it;
-            }
+    inline void link(const std::string &filename, const SourceInfo *parent) {
+        SourceInfo *si = fileInfo(filename);
+        if (si != nullptr) {
+            eliminateRootParent(si);
+            si->parents_.push_back(parent);
         }
-        return files_.end();
     }
 
     inline const string& fileName(uint32_t fid) {
-        for (const auto& it: files_) {
-            if (it.second.getId() == fid) {
-                return it.first;
-            }
+        SourceInfo *si = fileInfo(fid);
+        if (si != nullptr) {
+            return si->fileName();
         }
         static string error("<error>");
         return error;
     }
 
     inline const string& projectPath() {
-        return root_->first;
+        return root_->fileName();
     }
 
     inline void setGlobalArgs(const string &args) {
-        root_->second.setArgs(args);
+        root_->setArgs(args);
     }
-    virtual bool parse(const SourceIter &info, bool fromCompletion,
-                       uint32_t stopLine) = 0;
+    virtual bool parse(SourceInfo *info) = 0;
+    virtual void preprocess(SourceInfo *info) = 0;
     virtual void loadPCHData() = 0;
-    virtual void completion(const SourceIter &info, const string &prefix,
+    virtual void completion(SourceInfo *info, const string &prefix,
                             uint32_t line, uint32_t column) = 0;
     virtual ~CDEIndex() {
     };

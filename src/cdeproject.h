@@ -27,9 +27,6 @@
 class CDEProject {
     Db db_;
     CDEIndex *index_;
-    inline void updateProjectFile(const SourceIter &si, uint32_t line = 0) {
-        index_->parse(si, false, line);
-    }
 
   public:
     CDEProject(const string &projectPath, const string &store, bool pch);

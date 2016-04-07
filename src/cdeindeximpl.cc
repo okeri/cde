@@ -45,7 +45,6 @@ class CDEIndexImpl : public CDEIndex,
     friend class RecursiveASTVisitor<CDEIndexImpl>;
 
   private:
-    const SourceInfo *currentUnit_;
     ASTContext *context_;
     SourceManager *sm_;
     shared_ptr<PCHContainerOperations> pchOps_;
@@ -78,7 +77,7 @@ class CDEIndexImpl : public CDEIndex,
     }
     void handleDiagnostics(string tuFile, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
-                           bool onlyErrors, uint32_t stopLine);
+                           bool onlyErrors);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
                 bool fwd = false);
     bool VisitDecl(Decl *d);
@@ -88,11 +87,17 @@ class CDEIndexImpl : public CDEIndex,
     bool VisitTypeLoc(TypeLoc tl);
     bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl);
 
+    void preprocessTUforFile(ASTUnit *unit, const string &filename,
+                             bool buildMap);
+    ASTUnit *parse(SourceInfo *tu, SourceInfo *file, bool diag, bool domap);
+    ASTUnit *getParsedTU(SourceInfo *info, bool diag, bool *parsed = nullptr);
+
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
-    bool parse(const SourceIter &info, bool fromCompletion, uint32_t stopLine);
-    void completion(const SourceIter &info, const string &prefix,
+    bool parse(SourceInfo *info);
+    void completion(SourceInfo *info, const string &prefix,
                     uint32_t line, uint32_t column);
+    void preprocess(SourceInfo *info);
     void loadPCHData();
     ~CDEIndexImpl();
 };
@@ -161,11 +166,7 @@ class CiConsumer : public CodeCompleteConsumer {
             if (!completion->getAvailability()) {
                 const string &entry = completion->getTypedText();
                 if (entry != "" && strncmp("operator", entry.c_str(), 8) &&
-                    entry[0] != '~' /*&&
-                    (results[i].Kind != CodeCompletionResult::RK_Declaration ||
-                     completion->begin()->Kind ==
-                     CodeCompletionString::CK_ResultType) */
-                    ) {
+                    entry[0] != '~') {
                     if (prefix_ == "" || !strncmp(prefix_.c_str(), entry.c_str(),
                                                   prefix_.length())) {
                         if (!hasFilteredResults) {
@@ -359,18 +360,45 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
 }
 
 
-// looks like in most cases we need only buffer of current file
-void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
-                             uint32_t line, uint32_t column) {
-    string tuFile = info->first; // FIXME
-    const auto &unitIter = units_.find(info->second.getId());
-    if (unitIter == units_.end()) {
-        if (!parse(info, true, 0)) {
-            return;
-        }
-    }
 
-    ASTUnit *unit = units_.find(info->second.getId())->second;
+void CDEIndexImpl::preprocess(SourceInfo *info) {
+    bool parsed = false;
+    ASTUnit * unit  = getParsedTU(info, true, &parsed);
+    if (!parsed) {
+        preprocessTUforFile(unit, info->fileName(), false);
+    }
+}
+
+
+ASTUnit *CDEIndexImpl::getParsedTU(SourceInfo *info, bool diag, bool *parsed) {
+    SourceInfo *tu = getAnyTU(info);
+    const auto &unitIter = units_.find(tu->getId());
+    if (unitIter != units_.end()) {
+        return unitIter->second;
+    } else {
+        if (parsed != nullptr) {
+            *parsed = true;
+        }
+        return parse(tu, info, diag, true);
+    }
+    return nullptr;
+}
+
+bool CDEIndexImpl::parse(SourceInfo *info) {
+    SourceInfo *tu = getAnyTU(info);
+    return parse(tu, info, true, true);
+}
+
+// looks like in most cases we need only buffer of current file
+void CDEIndexImpl::completion(SourceInfo *info,
+                              const string &prefix, uint32_t line,
+                              uint32_t column) {
+
+
+    ASTUnit *unit = getParsedTU(info, false);
+    if (unit == nullptr) {
+        return;
+    }
 
     CodeCompleteOptions opts;
     opts.IncludeBriefComments = 1;
@@ -379,7 +407,7 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
 
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
 
-    unit->CodeComplete(info->first, line, column, emacsMapper::mapped(),
+    unit->CodeComplete(info->fileName(), line, column, emacsMapper::mapped(),
                        opts.IncludeMacros, opts.IncludeCodePatterns,
                        opts.IncludeBriefComments,
                        consumer,
@@ -394,8 +422,8 @@ void CDEIndexImpl::completion(const SourceIter &info, const string &prefix,
     if (consumer.diag->hasErrorOccurred() ||
         consumer.diag->hasFatalErrorOccurred()) {
         sm_ = consumer.sourceMgr.get();
-        handleDiagnostics(tuFile, consumer.diagnostics.begin(),
-                          consumer.diagnostics.end(), true, 0);
+        handleDiagnostics(info->fileName(), consumer.diagnostics.begin(),
+                          consumer.diagnostics.end(), true);
     }
 
     // ???
@@ -413,84 +441,13 @@ static const char *getClangIncludeArg() {
     return clangInc.c_str();
 }
 
-bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
-                         uint32_t stopLine) {
-    // TODO: if changed file is header, find TU and parse it
-    string tuFile = info->first;
-    uint32_t realStopLine = tuFile == info->first ? stopLine : 0;
-    // TODO: restore timecheck
-    // if (!noTimeCheck &&
-    //     info->second.time() > fileutil::fileTime(info->first)) {
-    //     return true;
-    // }
+void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
+                                       bool buildMap) {
+    PreprocessingRecord &pp = *unit->getPreprocessor()
+            .getPreprocessingRecord();
 
-
-    currentUnit_ = &info->second;
-    unique_ptr<ASTUnit> errUnit;
-    ASTUnit *unit;
-
-    const auto &unitIter = units_.find(info->second.getId());
-    if (unitIter != units_.end()) {
-        unit = unitIter->second;
-        unit->Reparse(pchOps_, emacsMapper::mapped());
-    } else {
-        vector<const char *> args;
-        args.reserve(16);
-
-        args.push_back("-Xclang");
-        args.push_back("-detailed-preprocessing-record");
-        currentUnit_->copyArgsToClangArgs(&args);
-
-        // We are not sure about language, so appending gcc c++ system include
-        // paths to the end seems ok.
-        if (!currentUnit_->haveNostdinc()) {
-            // clang include path
-            args.push_back(getClangIncludeArg());
-
-            // gcc includes
-            const unordered_set<string> &gcc_includes = gccSupport::includes();
-            for (const auto &i : gcc_includes) {
-                args.push_back(i.c_str());
-            }
-        }
-
-        args.push_back(info->first.c_str());
-
-        IntrusiveRefCntPtr<DiagnosticsEngine>
-                diags(CompilerInstance::createDiagnostics(
-                    new DiagnosticOptions()));
-
-        // TODO: parse headers independently or not? solution has chosen
-        // 1. link header to source and parse only parent source
-        // disdvantages:
-        // a. need to cache skipped ranges in elisp side
-        // b. one header could have multiple parents
-        unit = ASTUnit::LoadFromCommandLine(
-            args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, emacsMapper::mapped(), false, 1,
-            TU_Complete,
-            true, true, true, false, false, false, &errUnit);
-
-        if (unit != nullptr) {
-            units_[info->second.getId()] = unit;
-        }
-    }
-
-
-    if (fromCompletion) {
-        return unit != nullptr;
-    }
-
-    if (!unit && !errUnit) {
-        return false;
-    }
-
-    ASTUnit *curr = unit ? unit : errUnit.get();
-    sm_ = &curr->getSourceManager();
-    if (unit) {
-        PreprocessingRecord &pp = *unit->getPreprocessor()
-                .getPreprocessingRecord();
-        SourceIter parentFile = files_.end();
+    if (buildMap) {
+        const SourceInfo *parentFile = nullptr;
         for (const auto &it: pp) {
             switch (it->getKind()) {
                 case PreprocessedEntity::EntityKind::MacroExpansionKind: {
@@ -511,60 +468,115 @@ bool CDEIndexImpl::parse(const SourceIter &info, bool fromCompletion,
                         continue;
                     }
 
-                    if (parentFile == files_.end() || parentFile->first !=
+                    if (parentFile == nullptr || parentFile->fileName() !=
                         fe->getName()) {
-                        parentFile = getFile(fe->getName(), nullptr);
+                        parentFile = getFile(fe->getName());
                     }
-                    getFile(id->getFile()->getName(), &parentFile->second);
+                    link(id->getFile()->getName(), parentFile);
                 }
                     break;
                 default:
                     break;
             }
         }
+    }
 
-        const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
-        if (!skipped.empty()) {
-            uint32_t b, e, dummy;
-            string previousFile, file;
-            cout << "(cde--hideif '(";
-            for (const auto &s : skipped) {
-                file = getLocStr(s.getBegin(), &dummy, &b);
-                if (file == getLocStr(s.getEnd(), &dummy, &e)) {
-                    if (file != previousFile) {
-                        if (previousFile != "") {
-                            cout << ")";
-                        }
-                        cout << "(\"" << file  << "\" ";
-                        previousFile = file;
+    const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
+    if (!skipped.empty()) {
+        uint32_t b, e, dummy;
+        string previousFile, file;
+        cout << "(cde--hideif '(";
+        for (const auto &s : skipped) {
+            file = getLocStr(s.getBegin(), &dummy, &b);
+            if (file == getLocStr(s.getEnd(), &dummy, &e)) {
+                if (file != previousFile) {
+                    if (previousFile != "") {
+                        cout << ")";
                     }
-                    cout << "(" << b << " " << (e - 1) << ")";
+                    cout << "(\"" << file  << "\" ";
+                    previousFile = file;
                 }
+                cout << "(" << b << " " << (e - 1) << ")";
             }
-            cout << ")))";
         }
+        cout << ")))";
     }
-
-    handleDiagnostics(tuFile, curr->stored_diag_begin(),
-                      curr->stored_diag_end(), false, realStopLine);
-    if (curr->getDiagnostics().hasErrorOccurred() ||
-        curr->getDiagnostics().hasFatalErrorOccurred()) {
-        return false;
-    }
-
-    if (unit) {
-        context_ = &curr->getASTContext();
-
-        // TODO: clear records_ for specified unit.
-        // in this case we should also handle dependencies
-        TraverseDecl(context_->getTranslationUnitDecl());
-
-        info->second.setTime(time(NULL));
-        return true;
-    }
-    return false;
 }
 
+ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, bool diag,
+                         bool domap) {
+    // TODO: if changed file is header, find TU and parse it
+    // TODO: restore timecheck
+    // if (!noTimeCheck &&
+    //     info->second.time() > fileutil::fileTime(info->first)) {
+    //     return true;
+    // }
+
+    unique_ptr<ASTUnit> errUnit;
+    ASTUnit *unit;
+
+    const auto &unitIter = units_.find(tu->getId());
+    if (unitIter != units_.end()) {
+        unit = unitIter->second;
+        unit->Reparse(pchOps_, emacsMapper::mapped());
+    } else {
+        vector<const char *> args;
+        args.reserve(16);
+
+        args.push_back("-Xclang");
+        args.push_back("-detailed-preprocessing-record");
+        tu->copyArgsToClangArgs(&args);
+
+        // We are not sure about language, so appending gcc c++ system include
+        // paths to the end seems ok.
+        if (!tu->haveNostdinc()) {
+            // clang include path
+            args.push_back(getClangIncludeArg());
+
+            // gcc includes
+            const unordered_set<string> &gcc_includes = gccSupport::includes();
+            for (const auto &i : gcc_includes) {
+                args.push_back(i.c_str());
+            }
+        }
+
+        args.push_back(tu->fileName().c_str());
+
+        IntrusiveRefCntPtr<DiagnosticsEngine>
+                diags(CompilerInstance::createDiagnostics(
+                    new DiagnosticOptions()));
+
+        unit = ASTUnit::LoadFromCommandLine(
+            args.data(), args.data() + args.size(),
+            pchOps_, diags, "", false, true, emacsMapper::mapped(), false, 1,
+            TU_Complete,
+            true, true, true, false, false, false, &errUnit);
+
+        if (unit != nullptr) {
+            units_[tu->getId()] = unit;
+            sm_ = &unit->getSourceManager();
+            preprocessTUforFile(unit, au->fileName(), true);
+
+            if (diag) {
+                handleDiagnostics(tu->fileName(), unit->stored_diag_begin(),
+                                  unit->stored_diag_end(), false);
+            }
+            if (unit->getDiagnostics().hasErrorOccurred() ||
+                unit->getDiagnostics().hasFatalErrorOccurred()) {
+                return unit;
+            }
+            context_ = &unit->getASTContext();
+
+            // TODO: clear records_ for specified unit.
+            // in this case we should also handle dependencies
+            TraverseDecl(context_->getTranslationUnitDecl());
+
+            tu->setTime(time(NULL));
+            return unit;
+        }
+    }
+    return nullptr;
+}
 
 static unsigned levelIndex(DiagnosticsEngine::Level level) {
     switch (level) {
@@ -584,25 +596,18 @@ static unsigned levelIndex(DiagnosticsEngine::Level level) {
 }
 
 
-// TODO: std::pair ?
-struct DiagPos {
-    unsigned level;
-    size_t index;
-};
-
 
 void CDEIndexImpl::handleDiagnostics(string tuFile,
                                      const StoredDiagnostic *begin,
                                      const StoredDiagnostic *end,
-                                     bool onlyErrors,
-                                     uint32_t stopLine) {
+                                     bool onlyErrors) {
     if (begin == end) {
         cout << "(cde--error-rep nil nil nil)" << endl;
         return;
     }
     vector<string> errors;
-    map<string, map<uint32_t, DiagPos> > directs;
-    map<string, map<uint32_t, DiagPos> > links;
+    map<string, map<uint32_t, pair<unsigned, size_t> > > directs;
+    map<string, map<uint32_t, pair<unsigned, size_t> > > links;
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
             unsigned level = levelIndex(it->getLevel());
@@ -621,15 +626,8 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 errors.push_back(it->getMessage().str());
 
                 string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
-                DiagPos pos({level, errors.size() - 1});
+                pair<unsigned, size_t> pos(level, errors.size() - 1);
                 uint32_t line = sm_->getExpansionLineNumber(sl);
-
-                // check if diagnostic is not intrested for us
-                if (file == tuFile) {
-                    if (stopLine > 0 && line >= stopLine) {
-                        continue;
-                    }
-                }
 
                 // add diagnostic to current file
                 directs[file][line] = pos;
@@ -665,8 +663,8 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
     for (const auto& it : directs) {
         cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
-            cout << "(" << pit.first << ".(" << pit.second.level
-                 << " " << pit.second.index << "))";
+            cout << "(" << pit.first << ".(" << pit.second.first
+                 << " " << pit.second.second << "))";
         }
         cout << "))";
     }
@@ -675,8 +673,8 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
     for (const auto& it : links) {
         cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
-            cout << "(" << pit.first << ".(" << pit.second.level
-                 << " " << pit.second.index << "))";
+            cout << "(" << pit.first << ".(" << pit.second.first
+                 << " " << pit.second.second << "))";
         }
         cout << "))";
     }
@@ -707,10 +705,7 @@ uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,
         if (line) {
             *line = sm_->getExpansionLineNumber(expansionLoc);
         }
-
-        // it seems situation when getFile will not found location in index is
-        // impossible
-        return getFile(fe->getName(), currentUnit_)->second.getId();
+        return getFile(fe->getName())->getId();
     }
     return INVALID;
 }
@@ -776,9 +771,9 @@ void CDEIndexImpl::loadPCHData() {
         uint32_t id = 0;
         id = stoi(fileutil::basenameNoExt(it));
         if (id != 0) {
-            const SourceIter& si = fileInfo(id);
-            if (fileutil::fileTime(si->first) < si->second.time()) {
-                cout << "(message \"tryreal " << si->first << "\")" << endl;
+            const SourceInfo *si = fileInfo(id);
+            if (fileutil::fileTime(si->fileName()) < si->time()) {
+                cout << "(message \"tryreal " << si->fileName() << "\")" << endl;
                 auto readASTData = [=, &unit] {
                     IntrusiveRefCntPtr<DiagnosticsEngine>
                     diags(CompilerInstance::createDiagnostics(
