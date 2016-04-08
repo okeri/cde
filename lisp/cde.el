@@ -152,7 +152,7 @@ other switches:
 
 ;;; temporary
 (defun sent(process event)
-  (message-box "Process quit!!!")
+  (message-box "!!!Process quit!!!")
   (setq cde--process nil))
 
 (defun cde-try-quit()
@@ -160,11 +160,9 @@ other switches:
       (prog2 (process-send-string cde--process "Q\n") nil) t))
 
 
-;;;;###autoload
 (define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
   (if cde-mode (cde--init)  (cde--deinit)))
 
-;;;;###autoload
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
@@ -266,12 +264,12 @@ other switches:
 	(result nil))
     (dolist (buf (buffer-list))
       (with-current-buffer buf
-	(when (and cde-mode (equal project cde--project) cde--buffer-changed)
-	  (setq result t)
-	  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
-	  							 (buffer-size))
-	  			     "\n" (buffer-string)))
-	  (setq cde--buffer-changed nil))))
+    	(when (and cde-mode (equal project cde--project) cde--buffer-changed)
+    	  (setq result t)
+    	  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
+    	  							 (buffer-size))
+    	  			     "\n" (buffer-string)))
+    	  (setq cde--buffer-changed nil))))
     result))
 
 
@@ -280,9 +278,7 @@ other switches:
     (cde--error-disp)
     (when (cde--map-unsaved)
       (cde--send-command (concat "B " cde--project " "
-				 buffer-file-name " "
-				 (int-to-string (line-number-at-pos))
-				 "\n")))))
+				 buffer-file-name "\n")))))
 
 (defun cde--change (start end)
   (setq cde--buffer-changed t))
@@ -373,24 +369,15 @@ other switches:
     (goto-char (point-min))
     (forward-line (- line 1))
     (list (point) (+ (line-end-position) 1))))
-;; emacs build-in hideif compatible ?
-;; while show-ifdefs works fine, hide-ifdefs failed because hide-ifdef-env
-;; is empty and it's not local... the possible solution is export preprocessor
-;; directives from c++ side and allow hideif to manage it.
+
 (defun cde--hideif(ranges)
   (dolist (r ranges)
-    (let ((file nil) (buf nil))
-      (dolist (e r)
-	(if file
-	    (when buf
-	      (with-current-buffer buf
-		(let ((start (cde--line-to-pt (nth 0 e)))
-		      (end (cde--line-to-pt (nth 1 e))))
-		  (remove-overlays start end 'cde--hide-ifdef t)
-		  (let ((o (make-overlay start end)))
-		    (overlay-put o 'cde--hide-ifdef t)
-		    (overlay-put o 'face 'cde-hideif-face)))))
-	  (setq file e buf (get-file-buffer e)))))))
+    (let ((start (cde--line-to-pt (nth 0 r)))
+	  (end (cde--line-to-pt (nth 1 r))))
+      (remove-overlays start end 'cde--hide-ifdef t)
+      (let ((o (make-overlay start end)))
+	(overlay-put o 'cde--hide-ifdef t)
+	(overlay-put o 'face 'cde-hideif-face)))))
 
 (defun cde--error-disp()
   (let ((current (assq (line-number-at-pos) cde--diags)))

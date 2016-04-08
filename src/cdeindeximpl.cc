@@ -38,11 +38,26 @@
 #include "gccsupport.h"
 #include "emacsmapper.h"
 
+
+enum PF_FLAGS {
+    PF_NONE = 0x0,
+    PF_ERRDIAG = 0x1,
+    PF_ALLDIAG = 0x2,
+    PF_ANYDIAG = 0x3,
+    PF_BUILDMAP = 0x4,
+    PF_NOTIMECHECK = 0x8
+};
+
+inline PF_FLAGS operator|(PF_FLAGS a, PF_FLAGS b) {
+    return static_cast<PF_FLAGS>(static_cast<unsigned>(a) |
+                                 static_cast<unsigned>(b));
+}
+
 using namespace clang;
 
 class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
-    friend class RecursiveASTVisitor<CDEIndexImpl>;
+friend class RecursiveASTVisitor<CDEIndexImpl>;
 
   private:
     ASTContext *context_;
@@ -89,7 +104,7 @@ class CDEIndexImpl : public CDEIndex,
 
     void preprocessTUforFile(ASTUnit *unit, const string &filename,
                              bool buildMap);
-    ASTUnit *parse(SourceInfo *tu, SourceInfo *file, bool diag, bool domap);
+    ASTUnit *parse(SourceInfo *tu, SourceInfo *file, PF_FLAGS flags);
     ASTUnit *getParsedTU(SourceInfo *info, bool diag, bool *parsed = nullptr);
 
   public:
@@ -379,14 +394,15 @@ ASTUnit *CDEIndexImpl::getParsedTU(SourceInfo *info, bool diag, bool *parsed) {
         if (parsed != nullptr) {
             *parsed = true;
         }
-        return parse(tu, info, diag, true);
+        return parse(tu, info, PF_BUILDMAP | PF_NOTIMECHECK |
+                     (diag ? PF_ALLDIAG : PF_ERRDIAG));
     }
     return nullptr;
 }
 
 bool CDEIndexImpl::parse(SourceInfo *info) {
     SourceInfo *tu = getAnyTU(info);
-    return parse(tu, info, true, true);
+    return parse(tu, info, PF_BUILDMAP | PF_ALLDIAG);
 }
 
 // looks like in most cases we need only buffer of current file
@@ -395,7 +411,7 @@ void CDEIndexImpl::completion(SourceInfo *info,
                               uint32_t column) {
 
 
-    ASTUnit *unit = getParsedTU(info, false);
+    ASTUnit *unit = getParsedTU(info, true);
     if (unit == nullptr) {
         return;
     }
@@ -472,7 +488,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
                         fe->getName()) {
                         parentFile = getFile(fe->getName());
                     }
-                    link(id->getFile()->getName(), parentFile);
+                    link(getFile(id->getFile()->getName()), parentFile);
                 }
                     break;
                 default:
@@ -484,33 +500,25 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
     const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
     if (!skipped.empty()) {
         uint32_t b, e, dummy;
-        string previousFile, file;
+        string file;
         cout << "(cde--hideif '(";
         for (const auto &s : skipped) {
             file = getLocStr(s.getBegin(), &dummy, &b);
-            if (file == getLocStr(s.getEnd(), &dummy, &e)) {
-                if (file != previousFile) {
-                    if (previousFile != "") {
-                        cout << ")";
-                    }
-                    cout << "(\"" << file  << "\" ";
-                    previousFile = file;
-                }
+            if (file == filename && file == getLocStr(s.getEnd(), &dummy, &e)) {
                 cout << "(" << b << " " << (e - 1) << ")";
             }
         }
-        cout << ")))";
+        cout << "))" << endl;
     }
 }
 
-ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, bool diag,
-                         bool domap) {
+ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
     // TODO: if changed file is header, find TU and parse it
-    // TODO: restore timecheck
-    // if (!noTimeCheck &&
-    //     info->second.time() > fileutil::fileTime(info->first)) {
-    //     return true;
-    // }
+
+    if (!(flags & PF_NOTIMECHECK) &&
+        tu->time() > fileutil::fileTime(tu->fileName())) {
+        return nullptr;
+    }
 
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
@@ -555,16 +563,19 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, bool diag,
         if (unit != nullptr) {
             units_[tu->getId()] = unit;
             sm_ = &unit->getSourceManager();
-            preprocessTUforFile(unit, au->fileName(), true);
+            preprocessTUforFile(unit, au->fileName(), flags & PF_BUILDMAP);
 
-            if (diag) {
+            if (flags & PF_ANYDIAG) {
                 handleDiagnostics(tu->fileName(), unit->stored_diag_begin(),
-                                  unit->stored_diag_end(), false);
+                                  unit->stored_diag_end(),
+                                  (flags & PF_ERRDIAG));
             }
+
             if (unit->getDiagnostics().hasErrorOccurred() ||
                 unit->getDiagnostics().hasFatalErrorOccurred()) {
                 return unit;
             }
+
             context_ = &unit->getASTContext();
 
             // TODO: clear records_ for specified unit.

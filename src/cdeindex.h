@@ -207,7 +207,8 @@ struct hash<CI_KEY> {
 template <>
 struct hash<SourceInfo> {
     size_t operator()(const SourceInfo& k) const {
-        return hash<string>()(k.filename_) ^ (hash<int>()(k.fileId_) << 1);
+        return hash<string>()(k.filename_);
+                //^ (hash<int>()(k.fileId_) << 1);
     }
 };
 
@@ -236,7 +237,12 @@ class CDEIndex {
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
-        root_ = const_cast<SourceInfo*>(&(*files_.emplace(0, projPath).first));
+        root_ = addInfo(0, projPath);
+    }
+
+    inline SourceInfo* addInfo(uint32_t id, const string &path,
+                                     uint32_t time = 0) {
+        return const_cast<SourceInfo*>(&(*files_.emplace(id, path, time).first));
     }
 
     /** get SourceInfo or nullptr by filename */
@@ -275,11 +281,11 @@ class CDEIndex {
 
     /** get translation unit for current file*/
     SourceInfo* getAnyTU(SourceInfo *info) {
-        SourceInfo *token = info;
+        const SourceInfo *token = info;
         while (token->parents_.size() != 1 || token->parents_[0] != root_) {
-            //            token = token->parents_.at(0);
+            token = token->parents_.at(0);
         }
-        return token;
+        return const_cast<SourceInfo*>(token);
     }
 
     /** get all translation units for current file*/
@@ -295,13 +301,11 @@ class CDEIndex {
         if (info != nullptr) {
             return info;
         } else {
-            uint32_t nval = files_.size() + 1;
-            info =  const_cast<SourceInfo*>(
-                &(*files_.emplace(nval, filename).first));
+            info =  addInfo(files_.size() + 1, filename);
             // assume this file is TU
             info->parents_.push_back(root_);
+            return info;
         }
-        return nullptr;
     }
 
     inline void link(SourceInfo *info, uint32_t pid) {
@@ -312,12 +316,9 @@ class CDEIndex {
         }
     }
 
-    inline void link(const std::string &filename, const SourceInfo *parent) {
-        SourceInfo *si = fileInfo(filename);
-        if (si != nullptr) {
-            eliminateRootParent(si);
-            si->parents_.push_back(parent);
-        }
+    inline void link(SourceInfo *file, const SourceInfo *parent) {
+        eliminateRootParent(file);
+        file->parents_.push_back(parent);
     }
 
     inline const string& fileName(uint32_t fid) {

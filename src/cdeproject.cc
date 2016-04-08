@@ -57,15 +57,13 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
             index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
                     *static_cast<CI_DATA*>(data.get_data());
         } else if (key.get_size() == sizeof(uint32_t)) {
-            pack =
-                    static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
-            // FIXME const_cast
-            SourceInfo *current(const_cast<SourceInfo*>(&(
-                *index_->files_.emplace(
-                    *static_cast<uint32_t*>(key.get_data()), pack->filename(),
-                    pack->updated_time).first)));
+            pack =  static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
+
+            SourceInfo *current(index_->addInfo(*static_cast<uint32_t*>(
+                key.get_data()), pack->filename(), pack->updated_time));
 
             // make links
+            // FIXME: order may differ and link cannot be completed here
             uint32_t *parents  = pack->parents();
             for (auto i = 0; i < pack->parent_count; ++i) {
                 index_->link(current, parents[i]);
@@ -101,7 +99,7 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 }
 
 
-void CDEProject::updateProjectFile(const string &filename, uint32_t line) {
+void CDEProject::updateProjectFile(const string &filename) {
     index_->parse(index_->getFile(filename.c_str()));
 }
 
@@ -183,10 +181,6 @@ void CDEProject::findfile(const string &filename, const string &parent) {
             fileutil::addTrailingSep(&test);
             test += filename;
             if (fileutil::fileExists(test)) {
-                index_->getFile(test);
-                if (fileutil::isHeader(test)) {
-                    index_->link(test, psi);
-                }
                 cout << "(find-file \"" << test << "\")" << endl;
                 return;
             }
@@ -235,10 +229,6 @@ void CDEProject::swapSrcHdr(const string &filename) {
                 for (unsigned i = 1; exts[extIter][i] != ""; ++i) {
                     string testfile = test + exts[extIter][i];
                     if (fileutil::fileExists(testfile)) {
-                        index_->getFile(testfile);
-                        if (fileutil::isHeader(testfile)) {
-                            index_->link(testfile, si);
-                        }
                         cout << "(find-file \"" << testfile << "\")" << endl;
                         return;
                      }
@@ -272,8 +262,8 @@ void CDEProject::scanProject() {
     cout << "(dframe-message \"Done!\")" << endl;
 }
 
-void CDEProject::check(const string &filename, uint32_t line) {
-    updateProjectFile(filename, line);
+void CDEProject::check(const string &filename) {
+    updateProjectFile(filename);
 }
 
 

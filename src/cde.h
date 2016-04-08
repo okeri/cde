@@ -69,9 +69,8 @@ class CDE {
         }
     }
 
-    inline void check(const string &projectpath, const string &filename,
-                      uint32_t line) {
-        getProject(projectpath).check(filename, line);
+    inline void check(const string &projectpath, const string &filename) {
+        getProject(projectpath).check(filename);
     }
 
     inline void definition(const string &projectpath, const string &filename,

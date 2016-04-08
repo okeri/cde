@@ -33,8 +33,8 @@ class CDEProject {
     ~CDEProject();
     bool fileInProject(const string &filename) const;
     void scanProject();
-    void check(const string &filename, uint32_t line);
-    void updateProjectFile(const string &filename, uint32_t line = 0);
+    void check(const string &filename);
+    void updateProjectFile(const string &filename);
     void definition(const string &filename, uint32_t pos);
     void references(const string &filename, uint32_t pos);
     void findfile(const string &filename, const string &parent);

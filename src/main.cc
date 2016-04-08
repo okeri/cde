@@ -80,9 +80,8 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'B':
-                    if (count == 4) {
-                        cde.check(commands[1], commands[2], stoi(commands[3])
-                                  + 1);
+                    if (count == 3) {
+                        cde.check(commands[1], commands[2]);
                     }
                     break;
 
