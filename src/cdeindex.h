@@ -24,6 +24,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <queue>
 #include <algorithm>
 #include "fileutil.h"
 #include "strbreak.h"
@@ -208,7 +209,6 @@ template <>
 struct hash<SourceInfo> {
     size_t operator()(const SourceInfo& k) const {
         return hash<string>()(k.filename_);
-                //^ (hash<int>()(k.fileId_) << 1);
     }
 };
 
@@ -229,6 +229,8 @@ class CDEIndex {
 
   public:
     // TODO: records_ -> bimap ???
+    // i dont want to use boost here, because of dependency
+    // so it's time to think
     unordered_map<CI_KEY, CI_DATA> records_;
     // TODO: make files_  multi indexed
     unordered_set<SourceInfo> files_;
@@ -255,6 +257,7 @@ class CDEIndex {
         }
         return nullptr;
     }
+
     /** get SourceInfo or nullptr by file id */
     SourceInfo* fileInfo(uint32_t fid) {
         for (auto it = begin(files_); it != end(files_); ++it) {
@@ -280,7 +283,7 @@ class CDEIndex {
     }
 
     /** get translation unit for current file*/
-    SourceInfo* getAnyTU(SourceInfo *info) {
+    SourceInfo* getAnyTU(const SourceInfo *info) {
         const SourceInfo *token = info;
         while (token->parents_.size() != 1 || token->parents_[0] != root_) {
             token = token->parents_.at(0);
@@ -289,9 +292,22 @@ class CDEIndex {
     }
 
     /** get all translation units for current file*/
-    const vector<SourceInfo*> getAllTUs(const string &filename) {
-        vector<SourceInfo *> ret;
+    const unordered_set<SourceInfo*> getAllTUs(SourceInfo *info) {
+        unordered_set<SourceInfo *> ret;
+        queue<SourceInfo *> stk;
+        SourceInfo *token;
+        stk.push(info);
 
+        while (!stk.empty()) {
+            token = stk.front();
+            stk.pop();
+            for (auto it = token->parents_.begin();
+                 it != token->parents_.end(); ++it) {
+                if (token->parents_.size() != 1 || token->parents_[0] != root_) {
+                    ret.insert(token);
+                }
+            }
+        }
         return ret;
     }
 
@@ -308,17 +324,23 @@ class CDEIndex {
         }
     }
 
+    /** set parent-child dependency*/
     inline void link(SourceInfo *info, uint32_t pid) {
         SourceInfo *psi = fileInfo(pid);
+        // no checks here, because this will be called first
+        // after loading project and we trust previously saved data
         if (psi != nullptr) {
-            eliminateRootParent(info);
             info->parents_.push_back(psi);
         }
     }
 
+    /** set parent-child dependency*/
     inline void link(SourceInfo *file, const SourceInfo *parent) {
         eliminateRootParent(file);
-        file->parents_.push_back(parent);
+        const auto &end = file->parents_.end();
+        if (find(file->parents_.begin(), end, parent) == end) {
+            file->parents_.push_back(parent);
+        }
     }
 
     inline const string& fileName(uint32_t fid) {
@@ -337,7 +359,7 @@ class CDEIndex {
     inline void setGlobalArgs(const string &args) {
         root_->setArgs(args);
     }
-    virtual bool parse(SourceInfo *info) = 0;
+    virtual bool parse(SourceInfo *info, bool recursive) = 0;
     virtual void preprocess(SourceInfo *info) = 0;
     virtual void loadPCHData() = 0;
     virtual void completion(SourceInfo *info, const string &prefix,

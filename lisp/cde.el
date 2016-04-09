@@ -22,7 +22,7 @@
   "cde mode"
   :group 'c)
 
-(defface cde-hideif-face '((t :inherit mode-line-inactive))
+(defface cde-hideif-face '((t :background "grey60"))
   "Face for shadowing ifdef blocks."
   :group 'cde)
 

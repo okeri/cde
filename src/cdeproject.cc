@@ -122,13 +122,13 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 
 
 void CDEProject::updateProjectFile(const string &filename) {
-    index_->parse(index_->getFile(filename.c_str()));
+    index_->parse(index_->getFile(filename), true);
 }
 
 
 void CDEProject::definition(const string &filename, uint32_t pos) {
     SourceInfo *si = index_->getFile(filename);
-    index_->parse(si);
+    index_->parse(si, true);
     CI_KEY ref({si->getId(), pos});
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -146,7 +146,7 @@ void CDEProject::definition(const string &filename, uint32_t pos) {
 
 void CDEProject::references(const string &filename, uint32_t pos) {
     SourceInfo *si = index_->getFile(filename);
-    index_->parse(si);
+    index_->parse(si, true);
     uint32_t file = si->getId(),
             dfile = INVALID, dpos;
     unordered_map<CI_KEY, uint32_t> results;
@@ -279,13 +279,13 @@ void CDEProject::scanProject() {
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it: files) {
         cout << "(dframe-message \"parsing " << it << "\")" << endl;
-        updateProjectFile(it.c_str());
+        updateProjectFile(it);
     }
     cout << "(dframe-message \"Done!\")" << endl;
 }
 
 void CDEProject::check(const string &filename) {
-    updateProjectFile(filename);
+    index_->parse(index_->getFile(filename), false);
 }
 
 

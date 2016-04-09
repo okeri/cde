@@ -68,7 +68,7 @@ friend class RecursiveASTVisitor<CDEIndexImpl>;
 
   private:
     string getPCHFilename(uint32_t n);
-    inline const FileEntry * feFromLocation(const SourceLocation &location) {
+    inline const FileEntry *feFromLocation(const SourceLocation &location) {
         FileID fileID = sm_->getFileID(location);
 
         bool invalid = false;
@@ -105,11 +105,11 @@ friend class RecursiveASTVisitor<CDEIndexImpl>;
     void preprocessTUforFile(ASTUnit *unit, const string &filename,
                              bool buildMap);
     ASTUnit *parse(SourceInfo *tu, SourceInfo *file, PF_FLAGS flags);
-    ASTUnit *getParsedTU(SourceInfo *info, bool diag, bool *parsed = nullptr);
+    ASTUnit *getParsedTU(SourceInfo *info, bool all, bool *parsed = nullptr);
 
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
-    bool parse(SourceInfo *info);
+    bool parse(SourceInfo *info, bool recursive);
     void completion(SourceInfo *info, const string &prefix,
                     uint32_t line, uint32_t column);
     void preprocess(SourceInfo *info);
@@ -385,7 +385,7 @@ void CDEIndexImpl::preprocess(SourceInfo *info) {
 }
 
 
-ASTUnit *CDEIndexImpl::getParsedTU(SourceInfo *info, bool diag, bool *parsed) {
+ASTUnit *CDEIndexImpl::getParsedTU(SourceInfo *info, bool all, bool *parsed) {
     SourceInfo *tu = getAnyTU(info);
     const auto &unitIter = units_.find(tu->getId());
     if (unitIter != units_.end()) {
@@ -395,14 +395,26 @@ ASTUnit *CDEIndexImpl::getParsedTU(SourceInfo *info, bool diag, bool *parsed) {
             *parsed = true;
         }
         return parse(tu, info, PF_BUILDMAP | PF_NOTIMECHECK |
-                     (diag ? PF_ALLDIAG : PF_ERRDIAG));
+                     (all ? PF_ALLDIAG : PF_ERRDIAG));
     }
     return nullptr;
 }
 
-bool CDEIndexImpl::parse(SourceInfo *info) {
-    SourceInfo *tu = getAnyTU(info);
-    return parse(tu, info, PF_BUILDMAP | PF_ALLDIAG);
+
+bool CDEIndexImpl::parse(SourceInfo *info, bool recursive) {
+    if (recursive) {
+        unordered_set<SourceInfo *> tus = getAllTUs(info);
+        const auto &end = tus.end();
+        for (auto it = tus.begin(); it != end; ++it) {
+            if (!parse(*it, info, PF_BUILDMAP | PF_ALLDIAG)) {
+                return false;
+            }
+        }
+        return true;
+    } else {
+        SourceInfo *tu = getAnyTU(info);
+        return parse(tu, info, PF_ALLDIAG) != nullptr;
+    }
 }
 
 // looks like in most cases we need only buffer of current file
@@ -411,7 +423,7 @@ void CDEIndexImpl::completion(SourceInfo *info,
                               uint32_t column) {
 
 
-    ASTUnit *unit = getParsedTU(info, true);
+    ASTUnit *unit = getParsedTU(info, false);
     if (unit == nullptr) {
         return;
     }
@@ -462,19 +474,19 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
     PreprocessingRecord &pp = *unit->getPreprocessor()
             .getPreprocessingRecord();
 
-    if (buildMap) {
-        const SourceInfo *parentFile = nullptr;
-        for (const auto &it: pp) {
-            switch (it->getKind()) {
-                case PreprocessedEntity::EntityKind::MacroExpansionKind: {
-                    MacroExpansion *me(cast<MacroExpansion>(it));
-                    MacroDefinitionRecord *mdr = me->getDefinition();
-                    if (mdr != nullptr) {
-                        record(me->getSourceRange().getBegin(), mdr);
-                    }
+    const SourceInfo *parentFile = nullptr;
+    for (const auto &it: pp) {
+        switch (it->getKind()) {
+            case PreprocessedEntity::EntityKind::MacroExpansionKind: {
+                MacroExpansion *me(cast<MacroExpansion>(it));
+                MacroDefinitionRecord *mdr = me->getDefinition();
+                if (mdr != nullptr) {
+                    record(me->getSourceRange().getBegin(), mdr);
                 }
-                    break;
-                case PreprocessedEntity::EntityKind::InclusionDirectiveKind: {
+            }
+                break;
+            case PreprocessedEntity::EntityKind::InclusionDirectiveKind:
+                if (buildMap) {
                     InclusionDirective *id(cast<InclusionDirective>(it));
                     const FileEntry *fe = feFromLocation(
                         id->getSourceRange().getBegin());
@@ -490,31 +502,33 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
                     }
                     link(getFile(id->getFile()->getName()), parentFile);
                 }
-                    break;
-                default:
-                    break;
-            }
+                break;
+            default:
+                break;
         }
     }
 
     const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
-    if (!skipped.empty()) {
-        uint32_t b, e, dummy;
-        string file;
+    std::vector<std::pair<uint32_t, uint32_t> > filtered;
+    uint32_t b, e, dummy;
+    string file;
+
+    for (const auto &s : skipped) {
+        file = getLocStr(s.getBegin(), &dummy, &b);
+        if (file == filename && file == getLocStr(s.getEnd(), &dummy, &e)) {
+            filtered.push_back(std::make_pair(b, e -1));
+        }
+    }
+    if (!filtered.empty()) {
         cout << "(cde--hideif '(";
-        for (const auto &s : skipped) {
-            file = getLocStr(s.getBegin(), &dummy, &b);
-            if (file == filename && file == getLocStr(s.getEnd(), &dummy, &e)) {
-                cout << "(" << b << " " << (e - 1) << ")";
-            }
+        for (const auto &f : filtered) {
+            cout << "(" << f.first << " " << f.second << ")";
         }
         cout << "))" << endl;
     }
 }
 
 ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
-    // TODO: if changed file is header, find TU and parse it
-
     if (!(flags & PF_NOTIMECHECK) &&
         tu->time() > fileutil::fileTime(tu->fileName())) {
         return nullptr;
@@ -562,31 +576,30 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
 
         if (unit != nullptr) {
             units_[tu->getId()] = unit;
-            sm_ = &unit->getSourceManager();
-            preprocessTUforFile(unit, au->fileName(), flags & PF_BUILDMAP);
-
-            if (flags & PF_ANYDIAG) {
-                handleDiagnostics(tu->fileName(), unit->stored_diag_begin(),
-                                  unit->stored_diag_end(),
-                                  (flags & PF_ERRDIAG));
-            }
-
-            if (unit->getDiagnostics().hasErrorOccurred() ||
-                unit->getDiagnostics().hasFatalErrorOccurred()) {
-                return unit;
-            }
-
-            context_ = &unit->getASTContext();
-
-            // TODO: clear records_ for specified unit.
-            // in this case we should also handle dependencies
-            TraverseDecl(context_->getTranslationUnitDecl());
-
-            tu->setTime(time(NULL));
-            return unit;
+        } else {
+            return nullptr;
         }
     }
-    return nullptr;
+
+    sm_ = &unit->getSourceManager();
+    preprocessTUforFile(unit, au->fileName(), flags & PF_BUILDMAP);
+
+    if (flags & PF_ANYDIAG) {
+        handleDiagnostics(tu->fileName(), unit->stored_diag_begin(),
+                          unit->stored_diag_end(),
+                          (flags & PF_ERRDIAG));
+    }
+
+    if (unit->getDiagnostics().hasErrorOccurred() ||
+        unit->getDiagnostics().hasFatalErrorOccurred()) {
+        return unit;
+    }
+    // TODO: clear records_ for specified unit.
+    // in this case we should also handle dependencies
+    context_ = &unit->getASTContext();
+    TraverseDecl(context_->getTranslationUnitDecl());
+    tu->setTime(time(NULL));
+    return unit;
 }
 
 static unsigned levelIndex(DiagnosticsEngine::Level level) {
