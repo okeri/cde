@@ -114,8 +114,8 @@ class SourceInfo {
 
     SourceInfo(uint32_t fid, const string& filename,
                uint32_t updated_time = 0)
-            : fileId_(fid), filename_(filename),
-              updated_time_(updated_time) {}
+            : fileId_(fid), updated_time_(updated_time),
+              filename_(filename){}
 
     inline uint32_t getId() const {
         return fileId_;
