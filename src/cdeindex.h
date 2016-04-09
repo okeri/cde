@@ -303,7 +303,8 @@ class CDEIndex {
             stk.pop();
             for (auto it = token->parents_.begin();
                  it != token->parents_.end(); ++it) {
-                if (token->parents_.size() != 1 || token->parents_[0] != root_) {
+                stk.push(const_cast<SourceInfo*>(*it));
+                if (token->parents_.size() == 1 && token->parents_[0] == root_) {
                     ret.insert(token);
                 }
             }
