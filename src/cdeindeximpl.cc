@@ -594,8 +594,17 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
         unit->getDiagnostics().hasFatalErrorOccurred()) {
         return unit;
     }
-    // TODO: clear records_ for specified unit.
-    // in this case we should also handle dependencies
+
+    const auto &end = records_.end();
+    uint32_t tuFileId = tu->getId();
+    for (auto it = records_.begin(); it != end;) {
+        if (it->first.file == tuFileId ||
+            it->second.file == tuFileId) {
+            records_.erase(it++);
+        } else {
+            ++it;
+        }
+    }
     context_ = &unit->getASTContext();
     TraverseDecl(context_->getTranslationUnitDecl());
     tu->setTime(time(NULL));
