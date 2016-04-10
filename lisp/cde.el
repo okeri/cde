@@ -22,6 +22,7 @@
   "cde mode"
   :group 'c)
 
+;; TODO: find a valid color theme )
 (defface cde-hideif-face '((t :background "grey60"))
   "Face for shadowing ifdef blocks."
   :group 'cde)
@@ -273,15 +274,20 @@ other switches:
     result))
 
 
+;; TODO: it's terrible. Diagnostic output is sux now.
+;; consider switching to flycheck
 (defun cde--idle-handler()
   (when cde--project
     (cde--error-disp)
     (when (cde--map-unsaved)
       (cde--send-command (concat "B " cde--project " "
-				 buffer-file-name "\n")))))
+				 buffer-file-name "\n"))))
+  (setq cde--idle-timer nil))
 
 (defun cde--change (start end)
-  (setq cde--buffer-changed t))
+  (setq cde--buffer-changed t)
+  (when (not (timerp cde--idle-timer))
+    (setq cde--idle-timer (run-at-time cde-check nil #'cde--idle-handler))))
 
 (defun cde--deinit()
   (when (timerp cde--idle-timer)
@@ -308,10 +314,6 @@ other switches:
       (set-process-sentinel cde--process 'sent)
       (set-process-filter cde--process 'cde--handle-output)))
   (cde--send-command (concat "A " buffer-file-name "\n"))
-  (when (and (> cde-check 0) (not (timerp cde--idle-timer)))
-    (setq cde--idle-timer (run-with-idle-timer
-			   cde-check t #'cde--idle-handler)))
-
   (add-hook 'before-change-functions 'cde--change nil t))
 
 
@@ -336,6 +338,7 @@ other switches:
 
 (defun cde--send-command(cmd)
   (when cde--process
+    (message cmd)
     (process-send-string cde--process cmd)))
 
 
