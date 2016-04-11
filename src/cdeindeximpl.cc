@@ -57,7 +57,7 @@ using namespace clang;
 
 class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
-friend class RecursiveASTVisitor<CDEIndexImpl>;
+    friend class RecursiveASTVisitor<CDEIndexImpl>;
 
   private:
     ASTContext *context_;
@@ -106,7 +106,10 @@ friend class RecursiveASTVisitor<CDEIndexImpl>;
                              bool buildMap);
     ASTUnit *parse(SourceInfo *tu, SourceInfo *file, PF_FLAGS flags);
     ASTUnit *getParsedTU(SourceInfo *info, bool all, bool *parsed = nullptr);
-
+    void getFirstError(const std::string &filename,
+                       const StoredDiagnostic *begin,
+                       const StoredDiagnostic *end, uint32_t *errline,
+                       uint32_t *errcol);
   public:
     CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
     bool parse(SourceInfo *info, bool recursive);
@@ -240,7 +243,7 @@ class CiConsumer : public CodeCompleteConsumer {
 };
 
 CDEIndexImpl::CDEIndexImpl(const string& projectPath, const string& storePath,
-                         bool pch)
+                           bool pch)
         : CDEIndex(projectPath, storePath),
           pchOps_(new PCHContainerOperations()), pch_(pch) {
 }
@@ -262,7 +265,7 @@ CDEIndexImpl::~CDEIndexImpl() {
 
 
 CDEIndex *createIndex(const string& projectPath, const string& storePath,
-                     bool pch) {
+                      bool pch) {
     return new CDEIndexImpl(projectPath, storePath, pch);
 }
 
@@ -286,8 +289,8 @@ bool CDEIndexImpl::VisitMemberExpr(MemberExpr *e) {
 
 
 void CDEIndexImpl::record(const SourceLocation &locRef,
-                         const SourceLocation &locDef,
-                         bool fwd) {
+                          const SourceLocation &locDef,
+                          bool fwd) {
     CI_KEY ref;
     CI_DATA def;
     uint32_t refline, line;
@@ -302,7 +305,7 @@ void CDEIndexImpl::record(const SourceLocation &locRef,
             def.flags = DF_FWD;
             ref.swapWithData(&def, line);
             records_[ref] = def;
-         }
+        }
     }
 }
 
@@ -413,7 +416,7 @@ bool CDEIndexImpl::parse(SourceInfo *info, bool recursive) {
         return true;
     } else {
         SourceInfo *tu = getAnyTU(info);
-        return parse(tu, info, PF_ALLDIAG) != nullptr;
+        return parse(tu, info, PF_ALLDIAG | PF_NOTIMECHECK) != nullptr;
     }
 }
 
@@ -422,10 +425,21 @@ void CDEIndexImpl::completion(SourceInfo *info,
                               const string &prefix, uint32_t line,
                               uint32_t column) {
 
-
     ASTUnit *unit = getParsedTU(info, false);
     if (unit == nullptr) {
         return;
+    }
+
+    // find error location and compare it to complete location
+    if (unit->getDiagnostics().hasErrorOccurred() ||
+        unit->getDiagnostics().hasFatalErrorOccurred()) {
+        uint32_t errcol, errline;
+        getFirstError(info->fileName(), unit->stored_diag_begin(),
+                      unit->stored_diag_end(), &errline, &errcol);
+        if (errline < line || (errline == line && errcol < column)) {
+            cout << "(funcall cde--callback '())" << endl;
+            return;
+        }
     }
 
     CodeCompleteOptions opts;
@@ -434,7 +448,6 @@ void CDEIndexImpl::completion(SourceInfo *info,
     opts.IncludeCodePatterns = 0;
 
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
-
     unit->CodeComplete(info->fileName(), line, column, emacsMapper::mapped(),
                        opts.IncludeMacros, opts.IncludeCodePatterns,
                        opts.IncludeBriefComments,
@@ -446,6 +459,7 @@ void CDEIndexImpl::completion(SourceInfo *info,
                        *consumer.fileMgr,
                        consumer.diagnostics,
                        consumer.temporaryBuffers);
+
 
     if (consumer.diag->hasErrorOccurred() ||
         consumer.diag->hasFatalErrorOccurred()) {
@@ -519,6 +533,8 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
             filtered.push_back(std::make_pair(b, e -1));
         }
     }
+
+    // TODO: pass filename also in case of fast files opening in emacs
     if (!filtered.empty()) {
         cout << "(cde--hideif '(";
         for (const auto &f : filtered) {
@@ -552,6 +568,7 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
         if (!tu->haveNostdinc()) {
+
             // clang include path
             args.push_back(getClangIncludeArg());
 
@@ -590,11 +607,13 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
                           (flags & PF_ERRDIAG));
     }
 
+    // do not update records_ if errors are occured
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
         return unit;
     }
 
+    // clear records_
     const auto &end = records_.end();
     uint32_t tuFileId = tu->getId();
     for (auto it = records_.begin(); it != end;) {
@@ -605,8 +624,11 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
             ++it;
         }
     }
+
+    // traverse ast tree
     context_ = &unit->getASTContext();
     TraverseDecl(context_->getTranslationUnitDecl());
+
     tu->setTime(time(NULL));
     return unit;
 }
@@ -628,7 +650,35 @@ static unsigned levelIndex(DiagnosticsEngine::Level level) {
     }
 }
 
+void CDEIndexImpl::getFirstError(const std::string &filename,
+                                 const StoredDiagnostic *begin,
+                                 const StoredDiagnostic *end, uint32_t *errline,
+                                 uint32_t *errcol) {
+    for (auto it = begin; it != end; ++it) {
+        if (levelIndex(it->getLevel()) == 3) {
+            SourceLocation sl(it->getLocation());
+            FileID fileID = sm_->getFileID(sl);
+            bool invalid = false;
+            SrcMgr::SLocEntry sloc = sm_->getSLocEntry(fileID, &invalid);
+            if (invalid || !sloc.isFile()) {
+                continue;
+            }
 
+            string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+            while (file != filename) {
+                sl = sloc.getFile().getIncludeLoc();
+                fileID = sm_->getFileID(sl);
+                sloc = sm_->getSLocEntry(fileID, &invalid);
+                if (invalid || !sloc.isFile()) {
+                    break;
+                }
+                file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+            }
+            *errline = sm_->getExpansionLineNumber(sl);
+            *errcol = sm_->getExpansionColumnNumber(sl);
+        }
+    }
+}
 
 void CDEIndexImpl::handleDiagnostics(string tuFile,
                                      const StoredDiagnostic *begin,
@@ -648,8 +698,7 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 SourceLocation sl(it->getLocation());
                 FileID fileID = sm_->getFileID(sl);
                 bool invalid = false;
-                SrcMgr::SLocEntry sloc =
-                        sm_->getSLocEntry(fileID, &invalid);
+                SrcMgr::SLocEntry sloc = sm_->getSLocEntry(fileID, &invalid);
 
                 if (invalid || !sloc.isFile()) {
                     continue;

@@ -52,17 +52,20 @@ other switches:
 
 (defcustom cde-debug nil "toggle debug buffer")
 (defcustom cde-check 0 "experimental")
+(defcustom cde-disp-delay 0.3 "delay for showing diagnostic info")
 
 ;; internal variables
 (defvar cde--ring '())
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
+(defvar cde--check-timer nil)
 
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--buffer-changed nil)
 (defvar-local cde--diags nil)
+(defvar-local cde--last-line nil)
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
@@ -260,6 +263,7 @@ other switches:
 	    (save-buffer)
 	    (kill-buffer)))))))
 
+;; TODO: implement also unmap when saving file
 (defun cde--map-unsaved()
   (let ((project cde--project)
 	(result nil))
@@ -273,23 +277,23 @@ other switches:
     	  (setq cde--buffer-changed nil))))
     result))
 
-
-;; TODO: it's terrible. Diagnostic output is sux now.
-;; consider switching to flycheck
-(defun cde--idle-handler()
+(defun cde--check-handler()
   (when cde--project
-    (cde--error-disp)
     (when (cde--map-unsaved)
       (cde--send-command (concat "B " cde--project " "
 				 buffer-file-name "\n"))))
-  (setq cde--idle-timer nil))
+  (setq cde--check-timer nil))
+
 
 (defun cde--change (start end)
   (setq cde--buffer-changed t)
-  (when (not (timerp cde--idle-timer))
-    (setq cde--idle-timer (run-at-time cde-check nil #'cde--idle-handler))))
+  (when (timerp cde--check-timer)
+    (cancel-timer cde--check-timer))
+  (setq cde--check-timer (run-at-time cde-check nil #'cde--check-handler)))
 
 (defun cde--deinit()
+  (when (timerp cde--check-timer)
+    (cancel-timer cde--check-timer))
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
   (remove-hook 'before-change-functions 'cde--change)
@@ -314,11 +318,9 @@ other switches:
       (set-process-sentinel cde--process 'sent)
       (set-process-filter cde--process 'cde--handle-output)))
   (cde--send-command (concat "A " buffer-file-name "\n"))
+  (setq cde--idle-timer (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
   (add-hook 'before-change-functions 'cde--change nil t))
 
-
-;; TODO: when cde process throws multiple messages with newlines
-;; this could work wrong
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
     (when cde-debug
@@ -338,7 +340,6 @@ other switches:
 
 (defun cde--send-command(cmd)
   (when cde--process
-    (message cmd)
     (process-send-string cde--process cmd)))
 
 
@@ -383,9 +384,15 @@ other switches:
 	(overlay-put o 'face 'cde-hideif-face)))))
 
 (defun cde--error-disp()
-  (let ((current (assq (line-number-at-pos) cde--diags)))
-    (when current
-      (dframe-message (nth 2 current)))))
+  (let* ((line (line-number-at-pos))
+  	 (current (assq line cde--diags)))
+    (if current
+  	(progn
+  	  (setq-local cde--last-line line)
+  	  (dframe-message (nth 2 current)))
+      (when (eq line cde--last-line)
+  	(dframe-message "")
+  	(setq-local cde--last-line nil)))))
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
@@ -436,6 +443,7 @@ other switches:
 		       (level (nth 0 data)))
 		  (cde--hl-line line level)
 		  (push (cons line (list level (aref errors (nth 1 data))))
-			cde--diags))))))))))
+			cde--diags)))))))))
+  (cde--error-disp))
 
 (provide 'cde)
