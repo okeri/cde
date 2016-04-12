@@ -23,7 +23,7 @@
   :group 'c)
 
 ;; TODO: find a valid color theme )
-(defface cde-hideif-face '((t :background "grey60"))
+(defface cde-hideif-face '((t :background "grey10"))
   "Face for shadowing ifdef blocks."
   :group 'cde)
 
@@ -60,10 +60,9 @@ other switches:
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
 (defvar cde--check-timer nil)
-
+(defvar-local cde--nocheck nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
-(defvar-local cde--buffer-changed nil)
 (defvar-local cde--diags nil)
 (defvar-local cde--last-line nil)
 (defconst cde--process-buffer " *Cde*")
@@ -265,31 +264,24 @@ other switches:
 
 ;; TODO: implement also unmap when saving file
 (defun cde--map-unsaved()
-  (let ((project cde--project)
-	(result nil))
-    (dolist (buf (buffer-list))
-      (with-current-buffer buf
-    	(when (and cde-mode (equal project cde--project) cde--buffer-changed)
-    	  (setq result t)
-    	  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
-    	  							 (buffer-size))
-    	  			     "\n" (buffer-string)))
-    	  (setq cde--buffer-changed nil))))
-    result))
+  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
+							 (buffer-size))
+			     "\n" (buffer-string))))
 
 (defun cde--check-handler()
   (when cde--project
-    (when (cde--map-unsaved)
+;    (message "change occured!")
+    (cde--map-unsaved)
       (cde--send-command (concat "B " cde--project " "
-				 buffer-file-name "\n"))))
+    				 buffer-file-name "\n")))
   (setq cde--check-timer nil))
 
 
 (defun cde--change (start end)
-  (setq cde--buffer-changed t)
   (when (timerp cde--check-timer)
     (cancel-timer cde--check-timer))
-  (setq cde--check-timer (run-at-time cde-check nil #'cde--check-handler)))
+  (unless cde--nocheck
+    (setq cde--check-timer (run-at-time cde-check nil #'cde--check-handler))))
 
 (defun cde--deinit()
   (when (timerp cde--check-timer)
@@ -297,6 +289,9 @@ other switches:
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
   (remove-hook 'before-change-functions 'cde--change)
+  (remove-hook 'company-completion-started-hook 'cde--check-disable)
+  (remove-hook 'company-completion-cancelled-hook 'cde--check-enable)
+  (remove-hook 'company-completion-finished-hook 'cde--check-enable)
   (cde-try-quit))
 
 (add-hook 'kill-emacs-query-functions 'cde-try-quit)
@@ -316,10 +311,21 @@ other switches:
       (buffer-disable-undo cde--process-buffer)
       (set-process-query-on-exit-flag cde--process nil)
       (set-process-sentinel cde--process 'sent)
-      (set-process-filter cde--process 'cde--handle-output)))
-  (cde--send-command (concat "A " buffer-file-name "\n"))
-  (setq cde--idle-timer (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
-  (add-hook 'before-change-functions 'cde--change nil t))
+      (set-process-filter cde--process 'cde--handle-output))
+    (setq cde--idle-timer
+	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
+    (add-hook 'before-change-functions 'cde--change nil)
+    (add-hook 'company-completion-started-hook 'cde--check-disable)
+    (add-hook 'company-completion-cancelled-hook 'cde--check-enable)
+    (add-hook 'company-completion-finished-hook 'cde--check-enable))
+  (cde--send-command (concat "A " buffer-file-name "\n")))
+
+(defun cde--check-enable(dummy)
+  (setq-local cde--nocheck nil)
+  (cde--change 0 0))
+
+(defun cde--check-disable(dummy)
+  (setq-local cde--nocheck t))
 
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
@@ -375,24 +381,28 @@ other switches:
     (list (point) (+ (line-end-position) 1))))
 
 (defun cde--hideif(ranges)
+;  (cde--check-disable)
   (dolist (r ranges)
     (let ((start (cde--line-to-pt (nth 0 r)))
 	  (end (cde--line-to-pt (nth 1 r))))
       (remove-overlays start end 'cde--hide-ifdef t)
       (let ((o (make-overlay start end)))
 	(overlay-put o 'cde--hide-ifdef t)
-	(overlay-put o 'face 'cde-hideif-face)))))
+	(overlay-put o 'face 'cde-hideif-face))))
+  ;(cde--check-enable)
+  )
 
 (defun cde--error-disp()
   (let* ((line (line-number-at-pos))
   	 (current (assq line cde--diags)))
-    (if current
-  	(progn
-  	  (setq-local cde--last-line line)
-  	  (dframe-message (nth 2 current)))
-      (when (eq line cde--last-line)
-  	(dframe-message "")
-  	(setq-local cde--last-line nil)))))
+    (unless cde--nocheck
+      (if current
+	  (progn
+	    (setq-local cde--last-line line)
+	    (dframe-message (nth 2 current)))
+	(when (eq line cde--last-line)
+	  (dframe-message "")
+	  (setq-local cde--last-line nil))))))
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file

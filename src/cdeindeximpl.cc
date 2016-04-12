@@ -384,6 +384,8 @@ void CDEIndexImpl::preprocess(SourceInfo *info) {
     ASTUnit * unit  = getParsedTU(info, true, &parsed);
     if (!parsed) {
         preprocessTUforFile(unit, info->fileName(), false);
+        handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
+                          unit->stored_diag_end(), false);
     }
 }
 
@@ -514,7 +516,10 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
                         fe->getName()) {
                         parentFile = getFile(fe->getName());
                     }
-                    link(getFile(id->getFile()->getName()), parentFile);
+                    const FileEntry *ife = id->getFile();
+                    if (ife != nullptr) {
+                        link(getFile(ife->getName()), parentFile);
+                    }
                 }
                 break;
             default:
@@ -674,8 +679,11 @@ void CDEIndexImpl::getFirstError(const std::string &filename,
                 }
                 file = sm_->getFileEntryForSLocEntry(sloc)->getName();
             }
-            *errline = sm_->getExpansionLineNumber(sl);
-            *errcol = sm_->getExpansionColumnNumber(sl);
+            if (!invalid && sloc.isFile()) {
+                *errline = sm_->getExpansionLineNumber(sl);
+                *errcol = sm_->getExpansionColumnNumber(sl);
+                return;
+            }
         }
     }
 }
@@ -712,7 +720,15 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 uint32_t line = sm_->getExpansionLineNumber(sl);
 
                 // add diagnostic to current file
-                directs[file][line] = pos;
+                if (directs.find(file) == directs.end()) {
+                    directs[file][line] = pos;
+                } else {
+                    const auto &found = directs[file].find(line);
+                    if (found == directs[file].end() ||
+                        pos.first > found->first) {
+                        directs[file][line] = pos;
+                    }
+                }
 
                 // add includes chain
                 while (file != tuFile) {
@@ -724,12 +740,14 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                     }
                     file = sm_->getFileEntryForSLocEntry(sloc)->getName();
                     line = sm_->getExpansionLineNumber(sl);
-                    if ((links.find(file) == links.end() ||
-                         links[file].find(line) == links[file].end()) &&
-                        (directs.find(file) == directs.end() ||
-                         directs[file].find(line) == directs[file].end())) {
+                    if (links.find(file) == links.end()) {
                         links[file][line] = pos;
-                    }
+                    } else {
+                        const auto &found = links[file].find(line);
+                        if (found == links[file].end() || pos.first > found->first) {
+                            links[file][line] = pos;
+                        }
+                     }
                 }
             }
         }

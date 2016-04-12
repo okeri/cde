@@ -207,7 +207,7 @@ void CDEProject::findfile(const string &filename, const string &parent) {
                 return;
             }
         }
-        cout << "(message \"file " << filename << " not found\")" << endl;
+        cout << "(message \"'" << filename << "' file not found\")" << endl;
     }
 }
 
