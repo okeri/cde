@@ -15,8 +15,6 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 (require 'company-template)
 (require 'cl-lib)
-(require 'hideif) ;; for font variable
-
 
 (defgroup cde nil
   "cde mode"
@@ -31,11 +29,11 @@
   "Face for marking compilation errors"
   :group 'cde)
 
-(defface cde-warning-face '((t :background "darkorange"))
+(defface cde-warning-face '((t :background "color-68"))
   "Face for marking compilation warnings"
   :group 'cde)
 
-(defface cde-note-face '((t :background "darkorange"))
+(defface cde-note-face '((t :background "color-40"))
   "Face for marking compilation notes"
   :group 'cde)
 
@@ -74,7 +72,7 @@ other switches:
 (defun cde-update-project()
   (interactive)
   (when cde--project
-    (cde--map-unsaved)
+    (cde--force-map)
     (cde--send-command (concat "U " cde--project "\n"))))
 
 
@@ -87,7 +85,7 @@ other switches:
 (defun cde-symbol-def()
   (interactive)
   (when cde--project
-    (cde--map-unsaved)
+    (cde--force-map)
     (let ((line (buffer-substring-no-properties
 		 (line-beginning-position) (line-end-position))))
       (if (string-match cde--include-re line)
@@ -102,7 +100,7 @@ other switches:
 (defun cde-symbol-ref()
   (interactive)
   (when cde--project
-    (cde--map-unsaved)
+    (cde--force-map)
     (cde--send-command (concat "R " cde--project " " buffer-file-name " "
 			       (cde--sympos-string) "\n"))))
 
@@ -165,6 +163,7 @@ other switches:
 
 (define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
   (if cde-mode (cde--init)  (cde--deinit)))
+
 
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -262,37 +261,45 @@ other switches:
 	    (save-buffer)
 	    (kill-buffer)))))))
 
-;; TODO: implement also unmap when saving file
-(defun cde--map-unsaved()
-  (cde--send-command (concat "M "  buffer-file-name " " (int-to-string
-							 (buffer-size))
-			     "\n" (buffer-string))))
+(defun cde--force-map()
+  (when (timerp cde--check-timer)
+    (cancel-timer cde--check-timer)
+    (cde--send-command (concat "M "  buffer-file-name " "
+			       (int-to-string (buffer-size))
+			       "\n" (buffer-string))))
+  (setq cde--check-timer nil))
 
+;; TODO: implement also unmap when saving file
 (defun cde--check-handler()
   (when cde--project
-;    (message "change occured!")
-    (cde--map-unsaved)
-      (cde--send-command (concat "B " cde--project " "
-    				 buffer-file-name "\n")))
+    (cde--send-command (concat "M "  buffer-file-name " "
+			       (int-to-string (buffer-size))
+			       "\n" (buffer-string)))
+    (cde--send-command (concat "B " cde--project " "
+			       buffer-file-name "\n")))
   (setq cde--check-timer nil))
 
 
-(defun cde--change (start end)
-  (when (timerp cde--check-timer)
-    (cancel-timer cde--check-timer))
-  (unless cde--nocheck
-    (setq cde--check-timer (run-at-time cde-check nil #'cde--check-handler))))
+(defun cde--change (start end len)
+  (when cde-mode
+    (when (timerp cde--check-timer)
+      (cancel-timer cde--check-timer))
+    (unless cde--nocheck
+      (setq cde--check-timer
+	    (run-at-time cde-check nil #'cde--check-handler)))))
+
 
 (defun cde--deinit()
   (when (timerp cde--check-timer)
     (cancel-timer cde--check-timer))
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
-  (remove-hook 'before-change-functions 'cde--change)
+  (remove-hook 'after-change-functions 'cde--change)
   (remove-hook 'company-completion-started-hook 'cde--check-disable)
   (remove-hook 'company-completion-cancelled-hook 'cde--check-enable)
   (remove-hook 'company-completion-finished-hook 'cde--check-enable)
   (cde-try-quit))
+
 
 (add-hook 'kill-emacs-query-functions 'cde-try-quit)
 
@@ -314,7 +321,7 @@ other switches:
       (set-process-filter cde--process 'cde--handle-output))
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
-    (add-hook 'before-change-functions 'cde--change nil)
+    (add-hook 'after-change-functions 'cde--change)
     (add-hook 'company-completion-started-hook 'cde--check-disable)
     (add-hook 'company-completion-cancelled-hook 'cde--check-enable)
     (add-hook 'company-completion-finished-hook 'cde--check-enable))
@@ -322,7 +329,7 @@ other switches:
 
 (defun cde--check-enable(dummy)
   (setq-local cde--nocheck nil)
-  (cde--change 0 0))
+  (cde--change 0 1 1))
 
 (defun cde--check-disable(dummy)
   (setq-local cde--nocheck t))
@@ -381,16 +388,13 @@ other switches:
     (list (point) (+ (line-end-position) 1))))
 
 (defun cde--hideif(ranges)
-;  (cde--check-disable)
   (dolist (r ranges)
     (let ((start (cde--line-to-pt (nth 0 r)))
-	  (end (cde--line-to-pt (nth 1 r))))
+  	  (end (cde--line-to-pt (nth 1 r))))
       (remove-overlays start end 'cde--hide-ifdef t)
       (let ((o (make-overlay start end)))
-	(overlay-put o 'cde--hide-ifdef t)
-	(overlay-put o 'face 'cde-hideif-face))))
-  ;(cde--check-enable)
-  )
+  	(overlay-put o 'cde--hide-ifdef t)
+  	(overlay-put o 'face 'cde-hideif-face)))))
 
 (defun cde--error-disp()
   (let* ((line (line-number-at-pos))
@@ -399,9 +403,9 @@ other switches:
       (if current
 	  (progn
 	    (setq-local cde--last-line line)
-	    (dframe-message (nth 2 current)))
+	    (message (nth 2 current)))
 	(when (eq line cde--last-line)
-	  (dframe-message "")
+	  (message "")
 	  (setq-local cde--last-line nil))))))
 
 ;; we do not need cache results because reparse will be called on opening new
@@ -424,36 +428,36 @@ other switches:
   (let ((project cde--project))
     (dolist (buf (buffer-list))
       (with-current-buffer buf
-	(when (and cde-mode (equal project cde--project))
-	  (setq-local cde--diags nil)
-	  (remove-overlays nil nil 'cde--diag t)))))
+  	(when (and cde-mode (equal project cde--project))
+  	  (setq-local cde--diags nil)
+  	  (remove-overlays nil nil 'cde--diag t)))))
   (if errors
     (dolist (pos regulars)
       (let* ((file (nth 0 pos))
-	     (buf (get-file-buffer file)))
-	(dolist (diag (cdr pos))
-	  (let* ((data (nth 1 diag))
-		 (line (nth 0 diag))
-		 (level (nth 0 data))
-		 (index (nth 1 data))
-		 (msg (aref errors index)))
-	    (when buf
-	      (with-current-buffer buf
-		(cde--hl-line line level)
-		(push (cons line (list level msg)) cde--diags)))
-	    (aset errors index (concat file ":" (int-to-string line)
-				       ": " msg)))))
+  	     (buf (get-file-buffer file)))
+  	(dolist (diag (cdr pos))
+  	  (let* ((data (nth 1 diag))
+  		 (line (nth 0 diag))
+  		 (level (nth 0 data))
+  		 (index (nth 1 data))
+  		 (msg (aref errors index)))
+  	    (when buf
+  	      (with-current-buffer buf
+  		(cde--hl-line line level)
+  		(push (cons line (list level msg)) cde--diags)))
+  	    (aset errors index (concat file ":" (int-to-string line)
+  				       ": " msg)))))
       (dolist (pos links)
-	(let ((buf (get-file-buffer (nth 0 pos))))
-	  (when buf
-	    (with-current-buffer buf
-	      (dolist (diag (cdr pos))
-		(let* ((data (nth 1 diag))
-		       (line (nth 0 diag))
-		       (level (nth 0 data)))
-		  (cde--hl-line line level)
-		  (push (cons line (list level (aref errors (nth 1 data))))
-			cde--diags)))))))))
+  	(let ((buf (get-file-buffer (nth 0 pos))))
+  	  (when buf
+  	    (with-current-buffer buf
+  	      (dolist (diag (cdr pos))
+  		(let* ((data (nth 1 diag))
+  		       (line (nth 0 diag))
+  		       (level (nth 0 data)))
+  		  (cde--hl-line line level)
+  		  (push (cons line (list level (aref errors (nth 1 data))))
+  			cde--diags)))))))))
   (cde--error-disp))
 
 (provide 'cde)

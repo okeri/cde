@@ -34,14 +34,11 @@ std::vector<emacsMapper::LLVMRemappedFile> &emacsMapper::mapped() {
 void emacsMapper::map(const std::string &filename, size_t size) {
     unmap(filename);
 
-    llvm::MemoryBuffer *buffer = llvm::MemoryBuffer::getNewUninitMemBuffer(size)
-            .release();
-
+    llvm::MemoryBuffer *buffer =
+            llvm::MemoryBuffer::getNewUninitMemBuffer(size).release();
     if (size) {
         std::cin.read(const_cast<char*>(buffer->getBufferStart()), size);
     }
-    // TODO: it seems mapping is BROKEN
-    //    std::cout << "(message \"mapped " << filename << "\")" << std::endl;
     inst().mapped_.emplace_back(filename, buffer);
 }
 
