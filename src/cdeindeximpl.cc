@@ -539,9 +539,8 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
         }
     }
 
-    // TODO: pass filename also in case of fast files opening in emacs
     if (!filtered.empty()) {
-        cout << "(cde--hideif '(";
+        cout << "(cde--hideif \"" << filename << "\" '(";
         for (const auto &f : filtered) {
             cout << "(" << f.first << " " << f.second << ")";
         }
@@ -751,6 +750,11 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 }
             }
         }
+    }
+
+    if (errors.empty()) {
+        cout << "(cde--error-rep nil nil nil)" << endl;
+        return;
     }
 
     cout << "(cde--error-rep [";

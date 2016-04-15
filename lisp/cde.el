@@ -387,14 +387,17 @@ other switches:
     (forward-line (- line 1))
     (list (point) (+ (line-end-position) 1))))
 
-(defun cde--hideif(ranges)
-  (dolist (r ranges)
-    (let ((start (cde--line-to-pt (nth 0 r)))
-  	  (end (cde--line-to-pt (nth 1 r))))
-      (remove-overlays start end 'cde--hide-ifdef t)
-      (let ((o (make-overlay start end)))
-  	(overlay-put o 'cde--hide-ifdef t)
-  	(overlay-put o 'face 'cde-hideif-face)))))
+(defun cde--hideif(file ranges)
+  (let ((buf (get-file-buffer file)))
+    (when buf
+      (with-current-buffer buf
+	(dolist (r ranges)
+	  (let ((start (cde--line-to-pt (nth 0 r)))
+		(end (cde--line-to-pt (nth 1 r))))
+	    (remove-overlays start end 'cde--hide-ifdef t)
+	    (let ((o (make-overlay start end)))
+	      (overlay-put o 'cde--hide-ifdef t)
+	      (overlay-put o 'face 'cde-hideif-face))))))))
 
 (defun cde--error-disp()
   (let* ((line (line-number-at-pos))
