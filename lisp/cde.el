@@ -63,6 +63,7 @@ other switches:
 (defvar-local cde--callback nil)
 (defvar-local cde--diags nil)
 (defvar-local cde--last-line nil)
+(defvar-local cde--buffer-mapped nil)
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
@@ -269,7 +270,7 @@ other switches:
 			       "\n" (buffer-string))))
   (setq cde--check-timer nil))
 
-;; TODO: implement also unmap when saving file
+;; TODO: implement also unmap when closing file
 (defun cde--check-handler()
   (when cde--project
     (cde--send-command (concat "M "  buffer-file-name " "
@@ -355,6 +356,18 @@ other switches:
   (when cde--process
     (process-send-string cde--process cmd)))
 
+(defun cde--handle-completions(completions-pack)
+  (let ((completions '()))
+  (dolist (comp completions-pack)
+    (setq completions (append completions
+			      (list (propertize (substring (nth 0 comp)
+							   (nth 1 comp)
+							   (nth 2 comp))
+						'anno (substring (nth 0 comp)
+								 (nth 2 comp)
+								 (nth 3 comp))
+						'meta (nth 0 comp))))))
+  (funcall cde--callback completions)))
 
 (defun cde--candidates(callback)
   (setq-local cde--callback callback)

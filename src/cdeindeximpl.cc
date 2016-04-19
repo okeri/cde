@@ -173,8 +173,6 @@ class CiConsumer : public CodeCompleteConsumer {
         stable_sort(results, results + numResults);
         bool hasFilteredResults = false;
         // Print the results.
-        string meta;
-        meta.reserve(256);
         for (unsigned i = 0; i != numResults; ++i) {
             CodeCompletionString *completion =
                     results[i].CreateCodeCompletionString(
@@ -188,57 +186,67 @@ class CiConsumer : public CodeCompleteConsumer {
                     if (prefix_ == "" || !strncmp(prefix_.c_str(), entry.c_str(),
                                                   prefix_.length())) {
                         if (!hasFilteredResults) {
-                            cout << "(funcall cde--callback (list ";
+                            cout << "(cde--handle-completions '(";
                             hasFilteredResults = true;
                         }
-                        // TODO: investigate the ways to speed up showing
-                        // completions in emacs. may be pack completions here
-                        // and unpack in emacs will work faster ?
-                        cout << "(propertize \"" << entry
-                             << "\" 'anno " << "\"";
+                        cout << "(\"";
                         bool started = false;
-                        meta.resize(0);
+                        size_t annoLen = 0, resultLen = 0;
                         for (auto it = completion->begin();
                              it != completion->end(); ++it) {
                             switch(it->Kind) {
                                 case CodeCompletionString::CK_Optional:
                                     break;
                                 case CodeCompletionString::CK_VerticalSpace:
-                                    meta += " ";
+                                    cout << " ";
+                                    break;
+                                case CodeCompletionString::CK_Text:
+                                case CodeCompletionString::CK_Informative:
+                                    cout << it->Text;
+                                    if (resultLen != 0 && !started) {
+                                        resultLen += strlen(it->Text);
+                                    }
                                     break;
                                 case CodeCompletionString::CK_ResultType:
-                                    meta += it->Text;
-                                    meta += " ";
+                                    cout << it->Text << " ";
+                                    resultLen += strlen(it->Text) + 1;
                                     break;
                                 case CodeCompletionString::CK_LeftParen:
                                     started = true;
                                 default:
-                                    meta += it->Text;
+                                    cout << it->Text;
                                     break;
                             }
+
                             if (started) {
                                 if (it->Kind !=
                                     CodeCompletionString::CK_VerticalSpace &&
                                     it->Kind !=
                                     CodeCompletionString::CK_Optional) {
-                                    cout << it->Text;
+                                    annoLen += strlen(it->Text);
                                 }
                             }
                         }
-                        cout << "\"";
                         if (completion->getBriefComment() != nullptr) {
-                            meta += "  // ";
-                            meta += completion->getBriefComment();
+                            cout << "  // " << completion->getBriefComment();
                         }
-                        cout << " 'meta " << quoted(meta) << ")";
+                        cout << "\" " << resultLen << " ";
+                        resultLen += entry.length();
+                        cout << resultLen;
+                        if (completion->getBriefComment() != nullptr) {
+                            resultLen += annoLen;
+                            cout << " " << resultLen;
+                        }
+                        cout << ")";
                     }
                 }
             }
         }
         if (!hasFilteredResults) {
-            cout << "(funcall cde--callback '(";
+            cout << "(funcall cde--callback '())";
+        } else {
+            cout << "))" << endl;
         }
-        cout << "))" << endl;
     }
 };
 
