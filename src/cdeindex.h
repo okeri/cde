@@ -24,6 +24,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 #include <queue>
 #include <algorithm>
 #include "fileutil.h"
@@ -83,20 +84,14 @@ struct CI_KEY {
 
 #pragma pack(pop)
 
-//if parents_.size == 0, sourceinfo is root
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
     string filename_;
     vector<string> args_;
-    vector<const SourceInfo *> parents_;
+    vector<uint32_t> parents_;
 
     friend class CDEIndex;
-    friend struct std::hash<SourceInfo>;
-
-    inline const vector<string> &args() const {
-        return getDominatedParent()->args_;
-    }
 
   public:
     struct SourceInfoPacked {
@@ -114,9 +109,14 @@ class SourceInfo {
     };
 
     SourceInfo(uint32_t fid, const string& filename,
-               uint32_t updated_time = 0)
+               uint32_t updated_time = 0, uint32_t parentCount = 0,
+               uint32_t *parents = nullptr)
             : fileId_(fid), updated_time_(updated_time),
-              filename_(filename){}
+              filename_(filename) {
+        if (parentCount) {
+            std::copy(parents, parents + parentCount, parents_.begin());
+        }
+    }
 
     inline uint32_t getId() const {
         return fileId_;
@@ -139,11 +139,8 @@ class SourceInfo {
             pack);
         data->parent_count = parents_.size();
         data->updated_time = updated_time_;
-
-
-        uint32_t *parents  = data->parents();
-        for (unsigned i = 0; i < data->parent_count; ++i) {
-            parents[i] = parents_[i]->getId();
+        if (data->parent_count != 0) {
+            std::copy(parents_.begin(), parents_.end(), data->parents());
         }
         strcpy(data->filename(), filename_.c_str());
         return 65 + filename_.length() + sizeof(uint32_t) * data->parent_count;
@@ -157,42 +154,8 @@ class SourceInfo {
         return updated_time_;
     }
 
-    bool haveNostdinc() const {
-        const vector<string> &arguments = args();
-        for (const auto &s : arguments) {
-            if (s == "-nostdinc") {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void fillIncludes(unordered_set<string> *includes) const {
-        const vector<string> &arguments = args();
-        for (const auto &s : arguments) {
-            if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
-                includes->emplace(s.c_str() + 2, s.length() - 2);
-            }
-        }
-    }
-
-    void copyArgsToClangArgs(vector<const char*> *clang_args) const {
-        const vector<string> &arguments = args();
-        for (const auto &s : arguments) {
-            clang_args->push_back(s.c_str());
-        }
-    }
-
-    inline const SourceInfo* getDominatedParent() const {
-        const SourceInfo *token = this;
-        while (token->parents_.size() != 0 && token->args_.empty()) {
-            token  = token->parents_[0];
-        }
-        return token;
-    }
-
     bool operator==(const SourceInfo& rhs) const {
-        return filename_ == rhs.filename_;
+        return fileId_ == rhs.fileId_;
     }
 };
 
@@ -205,67 +168,87 @@ struct hash<CI_KEY> {
     }
 };
 
-template <>
-struct hash<SourceInfo> {
-    size_t operator()(const SourceInfo& k) const {
-        return hash<string>()(k.filename_);
-    }
-};
-
 }
 
 
 class CDEIndex {
-    SourceInfo *root_;
-
-    inline void eliminateRootParent(SourceInfo *si) {
-        if (si->parents_.size() == 1 && si->parents_[0] == root_) {
-            si->parents_.resize(0);
-        }
-    }
+    std::vector<SourceInfo> files_;
+    std::map<size_t, size_t> hfilenames_;
+    std::hash<std::string> hashStr;
 
   protected:
     string storePath_;
 
   public:
-    // TODO: records_ -> bimap ???
-    // i dont want to use boost here, because of dependency
-    // so it's time to think
     unordered_map<CI_KEY, CI_DATA> records_;
-    // TODO: make files_  multi indexed
-    unordered_set<SourceInfo> files_;
+
+  private:
+    inline SourceInfo* getDominatedParent(SourceInfo * si) const {
+        SourceInfo *token = si;
+        while (token->parents_.size() != 0 && token->args_.empty()) {
+            token = const_cast<SourceInfo *>(&files_[token->parents_[0]]);
+        }
+        return token;
+    }
+
+    inline const vector<string> &args(SourceInfo *si) const {
+        return getDominatedParent(si)->args_;
+    }
+
+  protected:
+    bool haveNostdinc(SourceInfo *si) const {
+        const vector<string> &arguments = args(si);
+        for (const auto &s : arguments) {
+            if (s == "-nostdinc") {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void copyArgsToClangArgs(SourceInfo *si,
+                             vector<const char*> *clang_args) const {
+        const vector<string> &arguments = args(si);
+        for (const auto &s : arguments) {
+            clang_args->push_back(s.c_str());
+        }
+    }
+
 
   public:
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
-        root_ = addInfo(0, projPath);
+        push(0, projPath);
     }
 
-    inline SourceInfo* addInfo(uint32_t id, const string &path,
-                                     uint32_t time = 0) {
-        return const_cast<SourceInfo*>(&(*files_.emplace(id, path, time).first));
+    inline std::vector<SourceInfo>::const_iterator begin() {
+        return files_.begin();
+    }
+
+    inline std::vector<SourceInfo>::const_iterator end() {
+        return files_.end();
+    }
+
+    inline SourceInfo* push(uint32_t id, const string &path,
+                            uint32_t time = 0, uint32_t parentCount = 0,
+                            uint32_t *parents = nullptr) {
+        files_.emplace_back(id, path, time, parentCount, parents);
+        SourceInfo *ret = &files_[files_.size() - 1];
+        hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
+                                          ret->fileId_));
+        return ret;
     }
 
     /** get SourceInfo or nullptr by filename */
-    SourceInfo* fileInfo(const string &filename) {
-        static SourceInfo needed(0,"");
-        needed.filename_ =  filename;
-        auto it = files_.find(needed);
-        if (it != files_.end()) {
-            return const_cast<SourceInfo*>(&(*it));
-        }
-        return nullptr;
+    inline SourceInfo* find(const string &filename) {
+        auto it = hfilenames_.find(hashStr(filename));
+        return it != hfilenames_.end() ? &files_[it->second] : nullptr;
     }
 
     /** get SourceInfo or nullptr by file id */
-    SourceInfo* fileInfo(uint32_t fid) {
-        for (auto it = begin(files_); it != end(files_); ++it) {
-            if (it->getId() == fid) {
-                return const_cast<SourceInfo*>(&(*it));
-            }
-        }
-        return nullptr;
+    inline SourceInfo* find(uint32_t fid) {
+        return fid < files_.size() ? &files_[fid] : nullptr;
     }
 
     /** find files in index  ending with filename*/
@@ -274,7 +257,7 @@ class CDEIndex {
         auto it = find_if(
             files_.begin(), end,
             [filename] (const SourceInfo &si) {
-                return fileutil::endsWith(si.fileName(), filename);
+                return fileutil::endsWith(si.filename_, filename);
             });
         if (it != end) {
             return &(*it);
@@ -283,12 +266,12 @@ class CDEIndex {
     }
 
     /** get translation unit for current file*/
-    SourceInfo* getAnyTU(const SourceInfo *info) {
-        const SourceInfo *token = info;
-        while (token->parents_.size() != 1 || token->parents_[0] != root_) {
-            token = token->parents_.at(0);
+    SourceInfo* getAnyTU(SourceInfo *info) {
+        SourceInfo *token = info;
+        while (token->parents_.size() != 1 || token->parents_[0] != 0) {
+            token = &files_[token->parents_[0]];
         }
-        return const_cast<SourceInfo*>(token);
+        return token;
     }
 
     /** get all translation units for current file*/
@@ -303,8 +286,8 @@ class CDEIndex {
             stk.pop();
             for (auto it = token->parents_.begin();
                  it != token->parents_.end(); ++it) {
-                stk.push(const_cast<SourceInfo*>(*it));
-                if (token->parents_.size() == 1 && token->parents_[0] == root_) {
+                stk.push(&files_[*it]);
+                if (token->parents_.size() == 1 && token->parents_[0] == 0) {
                     ret.insert(token);
                 }
             }
@@ -313,53 +296,52 @@ class CDEIndex {
     }
 
     /** get a file from index, or add it if files is not present in index*/
-    SourceInfo * getFile(const string &filename) {
-        SourceInfo *info = fileInfo(filename);
+    SourceInfo * getFile(const string &filename, uint32_t parent = 0) {
+        SourceInfo *info = find(filename);
         if (info != nullptr) {
             return info;
         } else {
-            info =  addInfo(files_.size() + 1, filename);
+            info = push(files_.size(), filename);
             // assume this file is TU
-            info->parents_.push_back(root_);
+            info->parents_.push_back(parent);
             return info;
         }
     }
 
     /** set parent-child dependency*/
-    inline void link(SourceInfo *info, uint32_t pid) {
-        SourceInfo *psi = fileInfo(pid);
-        // no checks here, because this will be called first
-        // after loading project and we trust previously saved data
-        if (psi != nullptr) {
-            info->parents_.push_back(psi);
-        }
-    }
-
-    /** set parent-child dependency*/
-    inline void link(SourceInfo *file, const SourceInfo *parent) {
-        eliminateRootParent(file);
+    inline void link(SourceInfo *file, uint32_t pid) {
         const auto &end = file->parents_.end();
-        if (find(file->parents_.begin(), end, parent) == end) {
-            file->parents_.push_back(parent);
+        if (std::find(file->parents_.begin(), end, pid) == end) {
+            file->parents_.push_back(pid);
         }
     }
 
     inline const string& fileName(uint32_t fid) {
-        SourceInfo *si = fileInfo(fid);
+        SourceInfo *si = find(fid);
         if (si != nullptr) {
-            return si->fileName();
+            return si->filename_;
         }
         static string error("<error>");
         return error;
     }
 
     inline const string& projectPath() {
-        return root_->fileName();
+        return files_[0].filename_;
     }
 
     inline void setGlobalArgs(const string &args) {
-        root_->setArgs(args);
+        files_[0].setArgs(args);
     }
+
+    void fillIncludes(SourceInfo *si, unordered_set<string> *includes) const {
+        const vector<string> &arguments = args(si);
+        for (const auto &s : arguments) {
+            if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
+                includes->emplace(s.c_str() + 2, s.length() - 2);
+            }
+        }
+    }
+
     virtual bool parse(SourceInfo *info, bool recursive) = 0;
     virtual void preprocess(SourceInfo *info) = 0;
     virtual void loadPCHData() = 0;

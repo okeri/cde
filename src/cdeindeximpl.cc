@@ -498,7 +498,6 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
     PreprocessingRecord &pp = *unit->getPreprocessor()
             .getPreprocessingRecord();
 
-    const SourceInfo *parentFile = nullptr;
     for (const auto &it: pp) {
         switch (it->getKind()) {
             case PreprocessedEntity::EntityKind::MacroExpansionKind: {
@@ -520,13 +519,10 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
                         continue;
                     }
 
-                    if (parentFile == nullptr || parentFile->fileName() !=
-                        fe->getName()) {
-                        parentFile = getFile(fe->getName());
-                    }
                     const FileEntry *ife = id->getFile();
+                    uint32_t parent = getFile(fe->getName())->getId();
                     if (ife != nullptr) {
-                        link(getFile(ife->getName()), parentFile);
+                        link(getFile(ife->getName(), parent), parent);
                     }
                 }
                 break;
@@ -561,7 +557,7 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
         tu->time() > fileutil::fileTime(tu->fileName())) {
         return nullptr;
     }
-
+    uint32_t tuId = tu->getId();
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
@@ -575,11 +571,11 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
 
         args.push_back("-Xclang");
         args.push_back("-detailed-preprocessing-record");
-        tu->copyArgsToClangArgs(&args);
+        copyArgsToClangArgs(tu, &args);
 
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
-        if (!tu->haveNostdinc()) {
+        if (!haveNostdinc(tu)) {
 
             // clang include path
             args.push_back(getClangIncludeArg());
@@ -641,7 +637,7 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
     context_ = &unit->getASTContext();
     TraverseDecl(context_->getTranslationUnitDecl());
 
-    tu->setTime(time(NULL));
+    find(tuId)->setTime(time(NULL));
     return unit;
 }
 
@@ -883,7 +879,7 @@ void CDEIndexImpl::loadPCHData() {
         uint32_t id = 0;
         id = stoi(fileutil::basenameNoExt(it));
         if (id != 0) {
-            const SourceInfo *si = fileInfo(id);
+            const SourceInfo *si = find(id);
             if (fileutil::fileTime(si->fileName()) < si->time()) {
                 cout << "(message \"tryreal " << si->fileName() << "\")" << endl;
                 auto readASTData = [=, &unit] {
