@@ -102,7 +102,7 @@ class CDEIndexImpl : public CDEIndex,
     bool VisitTypeLoc(TypeLoc tl);
     bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl);
 
-    void preprocessTUforFile(ASTUnit *unit, const string &filename,
+    void preprocessTUforFile(ASTUnit *unit, const string filename,
                              bool buildMap);
     ASTUnit *parse(SourceInfo *tu, SourceInfo *file, PF_FLAGS flags);
     ASTUnit *getParsedTU(SourceInfo *info, bool all, bool *parsed = nullptr);
@@ -493,7 +493,9 @@ static const char *getClangIncludeArg() {
     return clangInc.c_str();
 }
 
-void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string &filename,
+// no reference to filename here,
+// because of relocations in preprocessTUforFile->getFile->push
+void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, const string filename,
                                        bool buildMap) {
     PreprocessingRecord &pp = *unit->getPreprocessor()
             .getPreprocessingRecord();
@@ -557,7 +559,7 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
         tu->time() > fileutil::fileTime(tu->fileName())) {
         return nullptr;
     }
-    uint32_t tuId = tu->getId();
+
     unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
@@ -607,7 +609,12 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
     }
 
     sm_ = &unit->getSourceManager();
+
+    // reassign tu variable because real content of pointer could be modified
+    // because of relocations in preprocessTUforFile->getFile->push
+    uint32_t tuId = tu->getId();
     preprocessTUforFile(unit, au->fileName(), flags & PF_BUILDMAP);
+    tu = find(tuId);
 
     if (flags & PF_ANYDIAG) {
         handleDiagnostics(tu->fileName(), unit->stored_diag_begin(),
@@ -637,7 +644,7 @@ ASTUnit *CDEIndexImpl::parse(SourceInfo *tu, SourceInfo *au, PF_FLAGS flags) {
     context_ = &unit->getASTContext();
     TraverseDecl(context_->getTranslationUnitDecl());
 
-    find(tuId)->setTime(time(NULL));
+    tu->setTime(time(NULL));
     return unit;
 }
 

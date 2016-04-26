@@ -84,6 +84,12 @@ struct CI_KEY {
 
 #pragma pack(pop)
 
+enum { NOPARENTS = 0xffffffff };
+enum { ROOTID = 0 };
+
+// assume some average project has --> 1024 files.
+enum { MININDEXALLOC = 0x400 };
+
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
@@ -113,7 +119,8 @@ class SourceInfo {
                uint32_t *parents = nullptr)
             : fileId_(fid), updated_time_(updated_time),
               filename_(filename) {
-        if (parentCount) {
+        if (parentCount && parentCount != NOPARENTS) {
+            parents_.resize(parentCount);
             std::copy(parents, parents + parentCount, parents_.begin());
         }
     }
@@ -219,7 +226,8 @@ class CDEIndex {
     CDEIndex(const string& projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
-        push(0, projPath);
+        files_.reserve(MININDEXALLOC);
+        push(0, projPath, 0, NOPARENTS);
     }
 
     inline std::vector<SourceInfo>::const_iterator begin() {
@@ -230,14 +238,17 @@ class CDEIndex {
         return files_.end();
     }
 
-    inline SourceInfo* push(uint32_t id, const string &path,
+    SourceInfo* push(uint32_t id, const string &path,
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
-        files_.emplace_back(id, path, time, parentCount, parents);
-        SourceInfo *ret = &files_[files_.size() - 1];
-        hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
-                                          ret->fileId_));
-        return ret;
+        if (id >= files_.size()) {
+            files_.emplace_back(id, path, time, parentCount, parents);
+            SourceInfo *ret = &files_[files_.size() - 1];
+            hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
+                                              ret->fileId_));
+            return ret;
+        }
+        return &files_[id];
     }
 
     /** get SourceInfo or nullptr by filename */
@@ -268,7 +279,7 @@ class CDEIndex {
     /** get translation unit for current file*/
     SourceInfo* getAnyTU(SourceInfo *info) {
         SourceInfo *token = info;
-        while (token->parents_.size() != 1 || token->parents_[0] != 0) {
+        while (token->parents_.size() != 1 || token->parents_[0] != ROOTID) {
             token = &files_[token->parents_[0]];
         }
         return token;
@@ -287,7 +298,8 @@ class CDEIndex {
             for (auto it = token->parents_.begin();
                  it != token->parents_.end(); ++it) {
                 stk.push(&files_[*it]);
-                if (token->parents_.size() == 1 && token->parents_[0] == 0) {
+                if (token->parents_.size() == 1 &&
+                    token->parents_[0] == ROOTID) {
                     ret.insert(token);
                 }
             }
@@ -296,15 +308,12 @@ class CDEIndex {
     }
 
     /** get a file from index, or add it if files is not present in index*/
-    SourceInfo * getFile(const string &filename, uint32_t parent = 0) {
+    SourceInfo * getFile(const string &filename, uint32_t parent = ROOTID) {
         SourceInfo *info = find(filename);
         if (info != nullptr) {
             return info;
         } else {
-            info = push(files_.size(), filename);
-            // assume this file is TU
-            info->parents_.push_back(parent);
-            return info;
+            return push(files_.size(), filename, 0, 1, &parent);
         }
     }
 
@@ -312,6 +321,10 @@ class CDEIndex {
     inline void link(SourceInfo *file, uint32_t pid) {
         const auto &end = file->parents_.end();
         if (std::find(file->parents_.begin(), end, pid) == end) {
+            // remove wrong TU's if they have another dependencies
+            if (file->parents_.size() == 1 && file->parents_[0] == ROOTID) {
+                file->parents_.resize(0);
+            }
             file->parents_.push_back(pid);
         }
     }
@@ -326,11 +339,11 @@ class CDEIndex {
     }
 
     inline const string& projectPath() {
-        return files_[0].filename_;
+        return files_[ROOTID].filename_;
     }
 
     inline void setGlobalArgs(const string &args) {
-        files_[0].setArgs(args);
+        files_[ROOTID].setArgs(args);
     }
 
     void fillIncludes(SourceInfo *si, unordered_set<string> *includes) const {
