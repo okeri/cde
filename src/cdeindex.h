@@ -86,7 +86,6 @@ struct CI_KEY {
 
 enum { NOPARENTS = 0xffffffff };
 enum { ROOTID = 0 };
-
 // assume some average project has --> 1024 files.
 enum { MININDEXALLOC = 0x400 };
 
@@ -142,8 +141,7 @@ class SourceInfo {
     }
 
     size_t fillPack(void *pack) const {
-        SourceInfoPacked *data = static_cast<SourceInfoPacked*> (
-            pack);
+        SourceInfoPacked *data = static_cast<SourceInfoPacked*>(pack);
         data->parent_count = parents_.size();
         data->updated_time = updated_time_;
         if (data->parent_count != 0) {
@@ -190,21 +188,21 @@ class CDEIndex {
     unordered_map<CI_KEY, CI_DATA> records_;
 
   private:
-    inline SourceInfo* getDominatedParent(SourceInfo * si) const {
-        SourceInfo *token = si;
+    inline const SourceInfo* getDominatedParent(const SourceInfo * si) const {
+        const SourceInfo *token = si;
         while (token->parents_.size() != 0 && token->args_.empty()) {
-            token = const_cast<SourceInfo *>(&files_[token->parents_[0]]);
+            token = &files_[token->parents_[0]];
         }
         return token;
     }
 
-    inline const vector<string> &args(SourceInfo *si) const {
-        return getDominatedParent(si)->args_;
+    inline const vector<string> &args(uint32_t file) const {
+        return getDominatedParent(&files_[file])->args_;
     }
 
   protected:
-    bool haveNostdinc(SourceInfo *si) const {
-        const vector<string> &arguments = args(si);
+    bool haveNostdinc(uint32_t file) const {
+        const vector<string> &arguments = args(file);
         for (const auto &s : arguments) {
             if (s == "-nostdinc") {
                 return true;
@@ -213,12 +211,23 @@ class CDEIndex {
         return false;
     }
 
-    void copyArgsToClangArgs(SourceInfo *si,
+    void copyArgsToClangArgs(uint32_t file,
                              vector<const char*> *clang_args) const {
-        const vector<string> &arguments = args(si);
+        const vector<string> &arguments = args(file);
         for (const auto &s : arguments) {
             clang_args->push_back(s.c_str());
         }
+    }
+
+    /** get SourceInfo or nullptr by filename */
+    SourceInfo* find(const string &filename) {
+        auto it = hfilenames_.find(hashStr(filename));
+        return it != hfilenames_.end() ? &files_[it->second] : nullptr;
+    }
+
+    /** get SourceInfo or nullptr by file id */
+    SourceInfo* find(uint32_t fid) {
+        return fid < files_.size() ? &files_[fid] : nullptr;
     }
 
 
@@ -238,7 +247,7 @@ class CDEIndex {
         return files_.end();
     }
 
-    SourceInfo* push(uint32_t id, const string &path,
+    void push(uint32_t id, const string &path,
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
         if (id >= files_.size()) {
@@ -246,24 +255,11 @@ class CDEIndex {
             SourceInfo *ret = &files_[files_.size() - 1];
             hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
                                               ret->fileId_));
-            return ret;
         }
-        return &files_[id];
-    }
-
-    /** get SourceInfo or nullptr by filename */
-    inline SourceInfo* find(const string &filename) {
-        auto it = hfilenames_.find(hashStr(filename));
-        return it != hfilenames_.end() ? &files_[it->second] : nullptr;
-    }
-
-    /** get SourceInfo or nullptr by file id */
-    inline SourceInfo* find(uint32_t fid) {
-        return fid < files_.size() ? &files_[fid] : nullptr;
     }
 
     /** find files in index  ending with filename*/
-    const SourceInfo* findFile(const string &filename) {
+    uint32_t findFile(const string &filename) {
         const auto &end = files_.end();
         auto it = find_if(
             files_.begin(), end,
@@ -271,26 +267,27 @@ class CDEIndex {
                 return fileutil::endsWith(si.filename_, filename);
             });
         if (it != end) {
-            return &(*it);
+            return it->fileId_;
         }
-        return nullptr;
+        return INVALID;
     }
 
     /** get translation unit for current file*/
-    SourceInfo* getAnyTU(SourceInfo *info) {
-        SourceInfo *token = info;
-        while (token->parents_.size() != 1 || token->parents_[0] != ROOTID) {
-            token = &files_[token->parents_[0]];
+    uint32_t getAnyTU(uint32_t file) {
+        uint32_t token = file;
+        while (files_[token].parents_.size() != 1 ||
+               files_[token].parents_[0] != ROOTID) {
+            token = files_[token].parents_[0];
         }
         return token;
     }
 
     /** get all translation units for current file*/
-    const unordered_set<SourceInfo*> getAllTUs(SourceInfo *info) {
-        unordered_set<SourceInfo *> ret;
+    const unordered_set<uint32_t> getAllTUs(uint32_t file) {
+        unordered_set<uint32_t> ret;
         queue<SourceInfo *> stk;
         SourceInfo *token;
-        stk.push(info);
+        stk.push(&files_[file]);
 
         while (!stk.empty()) {
             token = stk.front();
@@ -300,7 +297,7 @@ class CDEIndex {
                 stk.push(&files_[*it]);
                 if (token->parents_.size() == 1 &&
                     token->parents_[0] == ROOTID) {
-                    ret.insert(token);
+                    ret.insert(token->fileId_);
                 }
             }
         }
@@ -308,31 +305,34 @@ class CDEIndex {
     }
 
     /** get a file from index, or add it if files is not present in index*/
-    SourceInfo * getFile(const string &filename, uint32_t parent = ROOTID) {
-        SourceInfo *info = find(filename);
-        if (info != nullptr) {
-            return info;
+    uint32_t getFile(const string &filename, uint32_t parent = ROOTID) {
+        SourceInfo *found = find(filename);
+        if (found != nullptr) {
+            return found->fileId_;
         } else {
-            return push(files_.size(), filename, 0, 1, &parent);
+            uint32_t ret = files_.size();
+            push(ret, filename, 0, 1, &parent);
+            return ret;
         }
     }
 
     /** set parent-child dependency*/
-    inline void link(SourceInfo *file, uint32_t pid) {
-        const auto &end = file->parents_.end();
-        if (std::find(file->parents_.begin(), end, pid) == end) {
+    inline void link(uint32_t file, uint32_t pid) {
+        vector<uint32_t> &parents = files_[file].parents_;
+        const auto &end = parents.end();
+        if (std::find(parents.begin(), end, pid) == end) {
             // remove wrong TU's if they have another dependencies
-            if (file->parents_.size() == 1 && file->parents_[0] == ROOTID) {
-                file->parents_.resize(0);
+            if (parents.size() == 1 &&
+                parents[0] == ROOTID) {
+                parents.resize(0);
             }
-            file->parents_.push_back(pid);
+            parents.push_back(pid);
         }
     }
 
     inline const string& fileName(uint32_t fid) {
-        SourceInfo *si = find(fid);
-        if (si != nullptr) {
-            return si->filename_;
+        if (fid < files_.size()) {
+            return files_[fid].fileName();
         }
         static string error("<error>");
         return error;
@@ -346,8 +346,8 @@ class CDEIndex {
         files_[ROOTID].setArgs(args);
     }
 
-    void fillIncludes(SourceInfo *si, unordered_set<string> *includes) const {
-        const vector<string> &arguments = args(si);
+    void fillIncludes(uint32_t file, unordered_set<string> *includes) const {
+        const vector<string> &arguments = args(file);
         for (const auto &s : arguments) {
             if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
                 includes->emplace(s.c_str() + 2, s.length() - 2);
@@ -355,10 +355,10 @@ class CDEIndex {
         }
     }
 
-    virtual bool parse(SourceInfo *info, bool recursive) = 0;
-    virtual void preprocess(SourceInfo *info) = 0;
+    virtual bool parse(uint32_t fid, bool recursive) = 0;
+    virtual void preprocess(uint32_t fid) = 0;
     virtual void loadPCHData() = 0;
-    virtual void completion(SourceInfo *info, const string &prefix,
+    virtual void completion(uint32_t fid, const string &prefix,
                             uint32_t line, uint32_t column) = 0;
     virtual ~CDEIndex() {
     };

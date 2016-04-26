@@ -98,9 +98,9 @@ void CDEProject::updateProjectFile(const string &filename) {
 
 
 void CDEProject::definition(const string &filename, uint32_t pos) {
-    SourceInfo *si = index_->getFile(filename);
-    index_->parse(si, true);
-    CI_KEY ref({si->getId(), pos});
+    CI_KEY ref({index_->getFile(filename), pos});
+    index_->parse(ref.file, true);
+
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
         const CI_DATA &def = defIt->second;
@@ -116,10 +116,9 @@ void CDEProject::definition(const string &filename, uint32_t pos) {
 
 
 void CDEProject::references(const string &filename, uint32_t pos) {
-    SourceInfo *si = index_->getFile(filename);
-    index_->parse(si, true);
-    uint32_t file = si->getId(),
+    uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
+    index_->parse(file, true);
     unordered_map<CI_KEY, uint32_t> results;
 
     for (const auto& r: index_->records_) {
@@ -161,14 +160,14 @@ void CDEProject::references(const string &filename, uint32_t pos) {
 
 // TODO: use score calculation for findfile/swapSrcHdr
 void CDEProject::findfile(const string &filename, const string &parent) {
-    const SourceInfo *si = index_->findFile(filename);
-    if (si != nullptr) {
-        cout << "(find-file \"" << si->fileName() << "\")" << endl;
+    uint32_t file = index_->findFile(filename);
+    if (file != INVALID) {
+        cout << "(find-file \"" << index_->fileName(file) << "\")" << endl;
     } else {
-        SourceInfo *psi = index_->getFile(parent);
+        uint32_t pfile = index_->getFile(parent);
         unordered_set<string> includes;
         includes.insert(fileutil::dirUp(parent));
-        index_->fillIncludes(psi, &includes);
+        index_->fillIncludes(pfile, &includes);
         for (const auto& include_path : includes) {
             string test = include_path;
             fileutil::addTrailingSep(&test);
@@ -210,11 +209,11 @@ void CDEProject::swapSrcHdr(const string &filename) {
 
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
-            SourceInfo *si = index_->getFile(filename);
+            uint32_t file = index_->getFile(filename);
             unordered_set<string> includes;
             string test;
             includes.insert(fileutil::dirUp(filename));
-            index_->fillIncludes(si, &includes);
+            index_->fillIncludes(file, &includes);
             for (const auto& include_path : includes) {
                 test = include_path;
                 fileutil::addTrailingSep(&test);
@@ -235,7 +234,7 @@ end:
 }
 
 bool CDEProject::fileInProject(const string &filename) const {
-    return index_->findFile(filename) != nullptr;
+    return index_->findFile(filename) != INVALID;
 }
 
 
@@ -258,7 +257,6 @@ void CDEProject::scanProject() {
 void CDEProject::check(const string &filename) {
     index_->parse(index_->getFile(filename), false);
 }
-
 
 void CDEProject::completion(const string &filename, const string &prefix,
                                uint32_t line, uint32_t column) {
