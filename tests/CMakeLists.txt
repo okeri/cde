@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 2.8)
+find_package (Boost COMPONENTS unit_test_framework REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
+set(CMAKE_CXX_FLAGS "-std=c++14")
+add_executable(test_external test_external.cc)
+target_compile_definitions(test_external PRIVATE _GNU_SOURCE BOOST_TEST_DYN_LINK)
+target_link_libraries(test_external ${Boost_LIBRARIES})
+add_test(external test_external)
