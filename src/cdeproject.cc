@@ -25,26 +25,6 @@
 CDEIndex *createIndex(const string& projectPath, const string& storePath,
                      bool pch);
 
-
-struct SourceLinkHelper {
-    SourceInfo *info;
-    uint32_t size;
-    uint32_t values[1];
-};
-
-static SourceLinkHelper *createLinkHelper(SourceInfo *inf, uint32_t siz,
-                                  uint32_t *vals) {
-    SourceLinkHelper * ret = reinterpret_cast<SourceLinkHelper*>(
-        new char[sizeof(SourceInfo*) + sizeof(uint32_t) *
-                 (siz + 1)]);
-    ret->info = inf;
-    ret->size = siz;
-    if (siz) {
-        memcpy(ret->values, vals, siz * sizeof(uint32_t));
-    }
-    return ret;
-}
-
 CDEProject::CDEProject(const string &projectPath, const string &store,
                              bool pch)
         : db_(NULL, 0) {
@@ -69,7 +49,6 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
     Dbc *curs;
     Dbt key, data;
     SourceInfo::SourceInfoPacked *pack;
-    forward_list<SourceLinkHelper*> linkInfo;
 
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
@@ -79,22 +58,14 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
                     *static_cast<CI_DATA*>(data.get_data());
         } else if (key.get_size() == sizeof(uint32_t)) {
             pack =  static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
-
-            linkInfo.push_front(createLinkHelper(index_->addInfo(
-                *static_cast<uint32_t*>(key.get_data()), pack->filename(),
-                pack->updated_time),pack->parent_count, pack->parents()));
+            index_->push(*static_cast<uint32_t*>(key.get_data()),
+                         pack->filename(), pack->updated_time,
+                         pack->parent_count, pack->parents());
         }
         res = curs->get(&key, &data, DB_NEXT);
     }
     curs->close();
 
-    // make links
-    for (auto it = begin(linkInfo); it != end(linkInfo); ++it) {
-        for (auto i = 0; i < (*it)->size; ++it) {
-            index_->link((*it)->info, (*it)->values[i]);
-        }
-        delete [] reinterpret_cast<char *>(*it);
-    }
     // load proj values
     ifstream f(projectPath + SEPARATOR + PRJ_EASY);
     if (f) {
@@ -127,9 +98,9 @@ void CDEProject::updateProjectFile(const string &filename) {
 
 
 void CDEProject::definition(const string &filename, uint32_t pos) {
-    SourceInfo *si = index_->getFile(filename);
-    index_->parse(si, true);
-    CI_KEY ref({si->getId(), pos});
+    CI_KEY ref({index_->getFile(filename), pos});
+    index_->parse(ref.file, true);
+
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
         const CI_DATA &def = defIt->second;
@@ -145,10 +116,9 @@ void CDEProject::definition(const string &filename, uint32_t pos) {
 
 
 void CDEProject::references(const string &filename, uint32_t pos) {
-    SourceInfo *si = index_->getFile(filename);
-    index_->parse(si, true);
-    uint32_t file = si->getId(),
+    uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
+    index_->parse(file, true);
     unordered_map<CI_KEY, uint32_t> results;
 
     for (const auto& r: index_->records_) {
@@ -190,14 +160,14 @@ void CDEProject::references(const string &filename, uint32_t pos) {
 
 // TODO: use score calculation for findfile/swapSrcHdr
 void CDEProject::findfile(const string &filename, const string &parent) {
-    const SourceInfo *si = index_->findFile(filename);
-    if (si != nullptr) {
-        cout << "(find-file \"" << si->fileName() << "\")" << endl;
+    uint32_t file = index_->findFile(filename);
+    if (file != INVALID) {
+        cout << "(find-file \"" << index_->fileName(file) << "\")" << endl;
     } else {
-        const SourceInfo *psi = index_->getFile(parent);
+        uint32_t pfile = index_->getFile(parent);
         unordered_set<string> includes;
         includes.insert(fileutil::dirUp(parent));
-        psi->fillIncludes(&includes);
+        index_->fillIncludes(pfile, &includes);
         for (const auto& include_path : includes) {
             string test = include_path;
             fileutil::addTrailingSep(&test);
@@ -239,11 +209,11 @@ void CDEProject::swapSrcHdr(const string &filename) {
 
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
-            const SourceInfo *si = index_->getFile(filename);
+            uint32_t file = index_->getFile(filename);
             unordered_set<string> includes;
             string test;
             includes.insert(fileutil::dirUp(filename));
-            si->fillIncludes(&includes);
+            index_->fillIncludes(file, &includes);
             for (const auto& include_path : includes) {
                 test = include_path;
                 fileutil::addTrailingSep(&test);
@@ -264,7 +234,7 @@ end:
 }
 
 bool CDEProject::fileInProject(const string &filename) const {
-    return index_->findFile(filename) != nullptr;
+    return index_->findFile(filename) != INVALID;
 }
 
 
@@ -288,7 +258,6 @@ void CDEProject::check(const string &filename) {
     index_->parse(index_->getFile(filename), false);
 }
 
-
 void CDEProject::completion(const string &filename, const string &prefix,
                                uint32_t line, uint32_t column) {
     index_->completion(index_->getFile(filename), prefix, line, column);
@@ -300,7 +269,7 @@ CDEProject::~CDEProject() {
     Dbt key(&num, sizeof(uint32_t));
     unsigned char pack[1024];
 
-    for (const auto& it: index_->files_) {
+    for (const auto& it : *index_) {
         uint32_t size = it.fillPack(pack);
         Dbt data(pack, size);
         num = it.getId();
