@@ -104,11 +104,11 @@ void CDEProject::definition(const string &filename, uint32_t pos) {
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
         const CI_DATA &def = defIt->second;
-        cout << "(prog1 (find-file \"";
+        cout << "(find-file \"";
         cout << index_->fileName(def.file)
              << "\")(goto-char (point-min))(forward-char " << def.pos
              << ")(push (list \"" << filename
-             << "\" " << pos << ") cde--ring))" << endl;
+             << "\" " << pos << ") cde--ring)" << endl;
     } else {
         cout << "(dframe-message \"No definition found\")" << endl;
     }

@@ -25,9 +25,9 @@ class ExternalProcess {
     int rfds_[2];
     int wfds_[2];
     size_t bufSize_;
-    char * buffer_;
-    std::shared_ptr<FILE> rpipe_;
-    std::shared_ptr<FILE> wpipe_;
+    char *buffer_;
+    FILE *rpipe_;
+    FILE *wpipe_;
 
   public:
     ExternalProcess() : bufSize_(260) {
@@ -35,11 +35,16 @@ class ExternalProcess {
         buffer_[0] = 0;
     }
     ~ExternalProcess() {
-        close(rfds_[0]);
-        close(wfds_[1]);
+        close();
         if (bufSize_) {
             free(buffer_);
         }
+    }
+    void close() {
+        fclose(rpipe_);
+        fclose(wpipe_);
+        ::close(rfds_[0]);
+        ::close(wfds_[1]);
     }
     bool open(const char *file, const char *args) {
         if (pipe(rfds_) || pipe(wfds_)) {
@@ -48,29 +53,30 @@ class ExternalProcess {
         if (fork() == 0) {
             dup2(wfds_[0], STDIN_FILENO);
             dup2(rfds_[1], STDOUT_FILENO);
-            close(rfds_[0]);
-            close(rfds_[1]);
-            close(wfds_[0]);
-            close(wfds_[1]);
+            ::close(rfds_[0]);
+            ::close(rfds_[1]);
+            ::close(wfds_[0]);
+            ::close(wfds_[1]);
             if (execl(file, args, NULL) == -1) {
                 return false;
             }
         }
-        close(wfds_[0]);
-        close(rfds_[1]);
+        ::close(wfds_[0]);
+        ::close(rfds_[1]);
 
-        wpipe_.reset(fdopen(wfds_[1], "w"), fclose);
-        rpipe_.reset(fdopen(rfds_[0], "r"), fclose);
-        return (rpipe_.get() != NULL && wpipe_.get() != NULL);
+        wpipe_ = fdopen(wfds_[1], "w");
+        rpipe_ = fdopen(rfds_[0], "r");
+        return (rpipe_ != NULL && wpipe_ != NULL);
     }
     void send(const std::string &data) {
-        fwrite(data.c_str(), 1, data.length(), wpipe_.get());
-        fflush(wpipe_.get());
+        fwrite(data.c_str(), 1, data.length(), wpipe_);
+        fflush(wpipe_);
     }
     const char* recv() {
-        if (getline(&buffer_, &bufSize_, rpipe_.get()) != -1) {
+        if (getline(&buffer_, &bufSize_, rpipe_) != -1) {
             return buffer_;
         }
-        return nullptr;
+        // TODO: wtf?
+        return "error reading pipe";
     }
 };

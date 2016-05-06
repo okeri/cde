@@ -1,43 +1,28 @@
+# Accepted config defines:
+# BDB: BDB_ROOT | BDB_INCLUDE_DIR
+# CLANG: LLVM_CONFIG
+# OPTIONAL: INCLUDE_TESTS
+# any other cmake standard defines like CMAKE_CXX_COMPILER BOOST_ROOT
+
 project("cde")
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1.0)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
 
-# FIXME
-set(LLVM_CONFIG "llvm-config-3.7")
+add_definitions(-D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS)
 
-if (NOT DEFINED LIBDB_PATH)
-  set(LIBDB_PATH "/usr/include")
-endif()
+find_package(BDB REQUIRED)
+find_package(Clang REQUIRED)
 
-# config
-set(CLANG_LIBS "-lclangFrontend -lclangAST -lclangBasic -lclangDriver -lclangEdit -lclangLex -lclangParse -lclangSema -lclangAnalysis -lclangSerialization")
-
-if (DEFINED LIBDB_PATH)
-  if (NOT DEFINED LIBDB_INCLUDE_PATH)
-    set(LIBDB_INCLUDE_PATH "${LIBDB_PATH}/include")
-  endif()
-  if (NOT DEFINED LIBDB_LIB_PATH)
-    set(LIBDB_LIB_PATH "${LIBDB_PATH}/lib64")
-  endif()
-endif()
-
-# llvm include dir
-execute_process(COMMAND ${LLVM_CONFIG} --includedir OUTPUT_VARIABLE LLVM_INCLUDES OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-# cflags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -fomit-frame-pointer -std=c++14 -fvisibility-inlines-hidden -fno-exceptions -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti")
-
-# llvm libs
-execute_process(COMMAND ${LLVM_CONFIG} --libs --system-libs OUTPUT_VARIABLE LLVM_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE "\n" " " LLVM_LIBS ${LLVM_LIBS})
-# llvm lib path
-execute_process(COMMAND ${LLVM_CONFIG} --ldflags OUTPUT_VARIABLE LLVM_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-include_directories(SYSTEM "src" ${LIBDB_INCLUDE_PATH} ${LLVM_INCLUDES})
+include_directories(SYSTEM "src" ${BDB_INCLUDE_DIR} ${CLANG_INCLUDE_DIR})
 
 file(GLOB SRC src/*.cc)
 add_executable(cde ${SRC})
 
-target_link_libraries(cde "-L${LIBDB_LIB_PATH} ${LLVM_DIRS} ${CLANG_LIBS} ${LLVM_LIBS} ${CLANG_LIBS} ${LLVM_LIBS} -ldb_cxx")
+set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -fno-exceptions -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti")
+
+target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES})
 
 if (INCLUDE_TESTS)
   enable_testing()
