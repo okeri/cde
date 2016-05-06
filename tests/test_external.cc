@@ -38,10 +38,12 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     ack += path + "simple\")\n";
 
     // create cache dir
-    boost::filesystem::create_directory(path + "cache");
+    std::string cache(path + "cache");
+    boost::filesystem::create_directory(cache);
 
     ExternalProcess cde;
-    BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), "-Ccache"), true);
+    BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
+                                                   + cache).c_str()), true);
 
     // ack
     cde.send(std::string("A ") + path + "simple/simple.cpp\n");
@@ -62,7 +64,8 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
                       "(setq cde--process nil)(save-buffers-kill-terminal)\n");
     cde.close();
     // restore index
-    BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), "-Ccache"), true);
+    BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
+                                                   + cache).c_str()), true);
 
     // ack
     cde.send(std::string("A ") + path + "simple/simple.h\n");

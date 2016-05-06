@@ -19,6 +19,7 @@
 #pragma once
 
 #include <unistd.h>
+#include <sys/wait.h>
 #include <memory>
 
 class ExternalProcess {
@@ -41,6 +42,7 @@ class ExternalProcess {
         }
     }
     void close() {
+        ::wait(NULL);
         fclose(rpipe_);
         fclose(wpipe_);
         ::close(rfds_[0]);
@@ -76,7 +78,6 @@ class ExternalProcess {
         if (getline(&buffer_, &bufSize_, rpipe_) != -1) {
             return buffer_;
         }
-        // TODO: wtf?
         return "error reading pipe";
     }
 };

@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     string gccpath(DEFAULT_GCC_PATH);
     bool pch = false;
 
-    for (unsigned i = 1; i < argc; ++i) {
+    for (unsigned i = 0; i < argc; ++i) {
         size_t len = strlen(argv[i]);
         if (len > 1 && argv[i][0] == '-') {
             switch (argv[i][1]) {
