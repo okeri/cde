@@ -218,54 +218,10 @@ other switches:
       (goto-char (point-min))
       (local-set-key (kbd "RET") 'cde-ref-jmp))))
 
-
-;; TODO: rewrite this function aims to convert build output to
-;; compile_commands.json
-(defun cde--parse-prj()
-  (interactive)
-  (let ((logfile (read-file-name "build log: ")))
-    (when logfile
-      (let ((includes '())
-	    (defines '())
-	    (incfile nil)
-	    (words (with-temp-buffer
-		     (insert-file-contents logfile)
-		     (split-string (buffer-string)))))
-	(dolist (exp words)
-	  (cond (incfile
-		 (push (concat "-include " exp) includes)
-		 (setq incfile nil))
-		((string-prefix-p "-include" exp)
-		 (setq incfile t))
-		((string-prefix-p "-I" exp)
-		 (push exp includes))
-		((or (string-prefix-p "-D" exp)
-		     (string-prefix-p "-std" exp))
-		 (let* ((epos (string-match-p "=" exp))
-			(def (if epos (substring exp 0 epos) exp)))
-		   (if (catch 'found
-			 (dolist (v defines)
-			   (if (string-prefix-p def v)
-			       (throw 'found nil)))
-			 t)
-		       (push exp defines))))))
-	(delete-dups includes)
-	(save-excursion
-	  (let ((buf (find-file-noselect cde--project-file)))
-	    (set-buffer buf)
-	    (erase-buffer)
-	    (dolist (inc defines)
-	      (princ (concat inc " ") buf))
-	    (princ "\n" buf)
-	    (dolist (inc includes)
-	      (princ (concat inc "\n") buf))
-	    (save-buffer)
-	    (kill-buffer)))))))
-
 (defun cde--force-map()
   (when (timerp cde--check-timer)
     (cancel-timer cde--check-timer)
-    (cde--send-command (concat "M "  buffer-file-name " "
+    (cde--send-command (concat "M " buffer-file-name " "
 			       (int-to-string (buffer-size))
 			       "\n" (buffer-string))))
   (setq cde--check-timer nil))
@@ -276,8 +232,9 @@ other switches:
     (cde--send-command (concat "M "  buffer-file-name " "
 			       (int-to-string (buffer-size))
 			       "\n" (buffer-string)))
-    (cde--send-command (concat "B " cde--project " "
-			       buffer-file-name "\n")))
+    (when (> cde-check 0)
+      (cde--send-command (concat "B " cde--project " "
+				 buffer-file-name "\n"))))
   (setq cde--check-timer nil))
 
 
@@ -441,39 +398,40 @@ other switches:
 	   (overlay-put o 'face 'cde-error-face)))))
 
 (defun cde--error-rep(errors regulars links)
-  (let ((project cde--project))
-    (dolist (buf (buffer-list))
-      (with-current-buffer buf
-  	(when (and cde-mode (equal project cde--project))
-  	  (setq-local cde--diags nil)
-  	  (remove-overlays nil nil 'cde--diag t)))))
-  (if errors
-    (dolist (pos regulars)
-      (let* ((file (nth 0 pos))
-  	     (buf (get-file-buffer file)))
-  	(dolist (diag (cdr pos))
-  	  (let* ((data (nth 1 diag))
-  		 (line (nth 0 diag))
-  		 (level (nth 0 data))
-  		 (index (nth 1 data))
-  		 (msg (aref errors index)))
-  	    (when buf
-  	      (with-current-buffer buf
-  		(cde--hl-line line level)
-  		(push (cons line (list level msg)) cde--diags)))
-  	    (aset errors index (concat file ":" (int-to-string line)
-  				       ": " msg)))))
-      (dolist (pos links)
-  	(let ((buf (get-file-buffer (nth 0 pos))))
-  	  (when buf
-  	    (with-current-buffer buf
-  	      (dolist (diag (cdr pos))
-  		(let* ((data (nth 1 diag))
-  		       (line (nth 0 diag))
-  		       (level (nth 0 data)))
-  		  (cde--hl-line line level)
-  		  (push (cons line (list level (aref errors (nth 1 data))))
-  			cde--diags)))))))))
-  (cde--error-disp))
+  (when (> cde-check 0)
+    (let ((project cde--project))
+      (dolist (buf (buffer-list))
+	(with-current-buffer buf
+	  (when (and cde-mode (equal project cde--project))
+	    (setq-local cde--diags nil)
+	    (remove-overlays nil nil 'cde--diag t)))))
+    (if errors
+	(dolist (pos regulars)
+	  (let* ((file (nth 0 pos))
+		 (buf (get-file-buffer file)))
+	    (dolist (diag (cdr pos))
+	      (let* ((data (nth 1 diag))
+		     (line (nth 0 diag))
+		     (level (nth 0 data))
+		     (index (nth 1 data))
+		     (msg (aref errors index)))
+		(when buf
+		  (with-current-buffer buf
+		    (cde--hl-line line level)
+		    (push (cons line (list level msg)) cde--diags)))
+		(aset errors index (concat file ":" (int-to-string line)
+					   ": " msg)))))
+	  (dolist (pos links)
+	    (let ((buf (get-file-buffer (nth 0 pos))))
+	      (when buf
+		(with-current-buffer buf
+		  (dolist (diag (cdr pos))
+		    (let* ((data (nth 1 diag))
+			   (line (nth 0 diag))
+			   (level (nth 0 data)))
+		      (cde--hl-line line level)
+		      (push (cons line (list level (aref errors (nth 1 data))))
+			    cde--diags)))))))))
+    (cde--error-disp)))
 
 (provide 'cde)

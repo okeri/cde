@@ -18,8 +18,14 @@
 
 #include <iostream>
 #include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/stat.h>
 #include <dirent.h>
+#endif
+
 #include <fstream>
 #include "fileutil.h"
 
@@ -39,7 +45,6 @@ bool endsWith(const std::string &str, const std::string &end) {
     return true;
 }
 
-
 static bool endsWithLow(const std::string &str, const std::string &end) {
     size_t len = end.length();
     if (str.length() < len) {
@@ -54,7 +59,6 @@ static bool endsWithLow(const std::string &str, const std::string &end) {
     return true;
 }
 
-
 bool isHeader(const std::string &path) {
     static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++",""};
     if (path.find(".") == std::string::npos) {
@@ -68,7 +72,6 @@ bool isHeader(const std::string &path) {
     return false;
 }
 
-
 static bool isSource(const std::string &path) {
     static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ""};
     for (int i = 0; exts[i] != ""; ++i) {
@@ -79,14 +82,14 @@ static bool isSource(const std::string &path) {
     return false;
 }
 
-
 void deleteTrailingSep(std::string *path) {
-    const auto &it = end(*path) - 1;
-    if (*it == SEPARATOR) {
+    auto it = std::end(*path) - 1;
+    const auto &begin = std::begin(*path);
+    while (*it == SEPARATOR && it != begin) {
         path->erase(it);
+        --it;
     }
 }
-
 
 void addTrailingSep(std::string *path) {
     const auto &it = end(*path) - 1;
@@ -94,7 +97,6 @@ void addTrailingSep(std::string *path) {
         *path += SEPARATOR;
     }
 }
-
 
 std::string dirUp(const std::string &path) {
     size_t len = path.length();
@@ -108,22 +110,23 @@ std::string dirUp(const std::string &path) {
     return "";
 }
 
-
-// TODO: need some unittests for functions like this one
 std::string basenameNoExt(const std::string &filename) {
     size_t start = filename.rfind(SEPARATOR);
     size_t end = filename.rfind(".");
-    if (start != std::string::npos &&
-        end != std::string::npos) {
-        return filename.substr(start + 1, end - start - 1);
+    if (start != std::string::npos) {
+        start ++;
+    } else {
+        start = 0;
     }
-    return "";
+    return filename.substr(start, end != std::string::npos ?
+                           end - start : end);
 }
 
-
 std::string extension(const std::string &filename) {
+    size_t sep = filename.rfind(SEPARATOR);
     size_t pos = filename.rfind(".");
-    if (pos != std::string::npos) {
+    if ((sep < pos || sep == std::string::npos) &&
+        pos != std::string::npos) {
         return filename.substr(pos);
     }
     return "";
@@ -137,13 +140,12 @@ uint32_t fileTime(const std::string &filename) {
     return INVALID;
 }
 
-
 bool fileExists(const std::string &filename) {
     struct stat st;
     return stat(filename.c_str(), &st) != -1 && S_ISREG(st.st_mode);
 }
 
-
+// TODO: Windows version ?
 void collectFiles(const std::string &path,
                   std::forward_list<std::string> *files, bool checkExt) {
     struct dirent *dirent;
@@ -173,32 +175,54 @@ void collectFiles(const std::string &path,
     }
 }
 
-
-// TODO: read by 1 byte is always bad idea
 const char *findLineInFile(const std::string &filename, uint32_t position) {
+    static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
-        char *result;
-        static char buffer[256] = {0};
-        is.seekg(position - 1, is.beg);
-        if (is) {
-            is.get(buffer[0]);
+
+        // find beginning of line
+        position --;
+        bool sv = position > sizeof(buffer);
+        if (sv) {
+            is.seekg(position - sizeof(buffer), is.beg);
         }
-        while (buffer[0] != '\n' && is) {
-            is.seekg(-2, is.cur);
-            if (is) {
-                is.get(buffer[0]);
+        size_t read = is.readsome(buffer, sizeof(buffer));
+        char *tok = buffer - 1 + (sv ? read : position);
+        while (*tok != '\n' && tok >= buffer) {
+            --tok;
+        }
+
+        // first newline is farther 4096 bytes ??!
+        if (sv && *tok != '\n') {
+            return "cannot parse file";
+        }
+
+        // if buffer is full, save newline->endofbuffer
+        // and read other data
+        if (read == sizeof(buffer)) {
+            size_t start = read + buffer - tok;
+            memmove(buffer, tok, start);
+            read = is.readsome(buffer + start, sizeof(buffer) - start);
+            tok = buffer;
+        }
+
+        // trim left
+        while (!isgraph(*tok)) {
+            tok++;
+        }
+
+        // trim right
+        for (char *et = tok; *et; ++et) {
+            if (*et == '\n') {
+                *et = 0;
+                break;
             }
         }
-        is.getline(buffer, sizeof(buffer));
-        result = buffer;
-        while (!isgraph(*result)) {
-            result++;
+        if (strlen(tok) > MAX_DISP_LEN) {
+            strcpy(tok + MAX_DISP_LEN - 4, "...");
         }
-        if (strlen(result) > MAX_DISP_LEN) {
-            strcpy(result + MAX_DISP_LEN - 4, "...");
-        }
-        return result;
+        return tok;
+
     } else {
         return "cannot open file";
     }
@@ -207,11 +231,11 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
 
 void mkdir(const std::string& path) {
     ::mkdir(path.c_str(), 0700);
-
 }
 
 /** remove ugly ../../ from path */
 std::string purify(const std::string &path) {
+    // TODO: Windows version ?
     std::string ret(path);
     size_t tokd, tok = ret.rfind("/..");
     while (tok != std::string::npos) {

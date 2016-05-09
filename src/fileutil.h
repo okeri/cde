@@ -22,11 +22,17 @@
 #include <string>
 #include <forward_list>
 
+#ifdef _WIN32
+#define SEPARATOR                      '\\'
+#else
 #define SEPARATOR                       '/'
+#endif
+
 #define INVALID                  0xffffffff
-#define MAX_DISP_LEN                     80
 
 namespace fileutil {
+
+enum {MAX_DISP_LEN = 80};
 
 bool endsWith(const std::string &str, const std::string &end);
 bool isHeader(const std::string &path);
