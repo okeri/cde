@@ -84,7 +84,8 @@ class CDE {
     }
 
     inline void completion(const string &projectpath, const string &filename,
-                           const string &prefix, uint32_t line, uint32_t column) {
+                           const string &prefix, uint32_t line,
+                           uint32_t column) {
         getProject(projectpath).completion(filename, prefix, line, column);
     }
 

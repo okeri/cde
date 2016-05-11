@@ -48,4 +48,4 @@ void collectFiles(const std::string &path,
                   std::forward_list<std::string> *files, bool checkExt = true);
 const char * findLineInFile(const std::string &filename, uint32_t ofs);
 void mkdir(const std::string& path);
-}  // namespace
+}  // namespace fileutil

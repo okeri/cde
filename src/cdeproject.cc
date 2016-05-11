@@ -28,7 +28,6 @@ CDEIndex *createIndex(const string& projectPath, const string& storePath,
 CDEProject::CDEProject(const string &projectPath, const string &store,
                              bool pch)
         : db_(NULL, 0) {
-
     // init database
     string dbpath(store + SEPARATOR);
     size_t offset = dbpath.length();
@@ -52,6 +51,7 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
 
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
+    // FIXME: !!! critical !!! some data in db had sizeof(uint32_t) key size
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
             index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
@@ -121,7 +121,7 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     index_->parse(file, true);
     unordered_map<CI_KEY, uint32_t> results;
 
-    for (const auto& r: index_->records_) {
+    for (const auto& r : index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
             if (r.second.flags & DF_FWD) {
@@ -132,7 +132,7 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     }
 
     if (dfile != INVALID) {
-        for (const auto& r: index_->records_) {
+        for (const auto& r : index_->records_) {
             if (r.second.pos == dpos && r.second.file == dfile &&
                 (r.first.pos != pos || r.first.file != file)) {
                 results[r.first] = r.second.refline;
@@ -145,14 +145,15 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     } else {
         string last = "", current;
         cout << "(cde--ref-setup '(";
-        for (const auto& r: results) {
+        for (const auto& r : results) {
             current = index_->fileName(r.first.file);
             if (last != current) {
                 cout << "\"" << current << "\" ";
                 last = current;
             }
             cout << "(" << r.second << " "
-                 << quoted(fileutil::findLineInFile(current, r.first.pos)) << ") ";
+                 << quoted(fileutil::findLineInFile(current, r.first.pos))
+                 << ") ";
         }
         cout << "))" << endl;
     }
@@ -187,7 +188,7 @@ void CDEProject::swapSrcHdr(const string &filename) {
         {".cc", ".hh", ".h", ".H", ""},
         {".cpp", ".hpp", ".h", ".hh", ".H", ""},
         {".cxx", ".hxx", ".h", ".hh", ".H", ""},
-        {".c++",".h++", ".h", ""},
+        {".c++", ".h++", ".h", ""},
         {".C", ".H", ".h", ""},
         {".h", ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ""},
         {".hh", ".cc", ".cpp", ".cxx", ""},
@@ -247,7 +248,7 @@ void CDEProject::acknowledge(const string &filename) {
 void CDEProject::scanProject() {
     forward_list<string> files;
     fileutil::collectFiles(index_->projectPath(), &files);
-    for (const auto& it: files) {
+    for (const auto& it : files) {
         cout << "(dframe-message \"parsing " << it << "\")" << endl;
         updateProjectFile(it);
     }
@@ -267,7 +268,7 @@ CDEProject::~CDEProject() {
     // Store file info
     uint32_t num;
     Dbt key(&num, sizeof(uint32_t));
-    unsigned char pack[1024];
+    unsigned char pack[2048];
 
     for (const auto& it : *index_) {
         uint32_t size = it.fillPack(pack);
@@ -277,7 +278,7 @@ CDEProject::~CDEProject() {
     }
 
     // Store ref-def pairs
-    for (auto it: index_->records_) {
+    for (auto it : index_->records_) {
         Dbt key(const_cast<CI_KEY*>(&it.first), sizeof(CI_KEY));
         Dbt data(const_cast<CI_DATA*>(&it.second), sizeof(CI_DATA));
         db_.put(NULL, &key, &data, 0);

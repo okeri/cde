@@ -18,9 +18,9 @@
 
 #pragma once
 
+#include <llvm/Support/MemoryBuffer.h>
 #include <utility>
 #include <vector>
-#include <llvm/Support/MemoryBuffer.h>
 
 // TODO: implement region mapping.
 // This should increase performance greatly

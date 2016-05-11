@@ -50,8 +50,7 @@ struct CI_KEY {
     bool operator<(const CI_KEY &rhs) const {
         if (file == rhs.file) {
             return (pos < rhs.pos);
-        }
-        else {
+        } else {
             return (file < rhs.file);
         }
     }
@@ -84,7 +83,6 @@ struct CI_KEY {
 
 #pragma pack(pop)
 
-enum { NOPARENTS = 0xffffffff };
 enum { ROOTID = 0 };
 // assume some average project has --> 1024 files.
 enum { MININDEXALLOC = 0x400 };
@@ -118,7 +116,7 @@ class SourceInfo {
                uint32_t *parents = nullptr)
             : fileId_(fid), updated_time_(updated_time),
               filename_(filename) {
-        if (parentCount && parentCount != NOPARENTS) {
+        if (parentCount) {
             parents_.resize(parentCount);
             std::copy(parents, parents + parentCount, parents_.begin());
         }
@@ -135,11 +133,12 @@ class SourceInfo {
     inline void setArgs(const string& args) {
         args_.resize(0);
         strBreak(args, [this] (const char* head, size_t len) {
-                args_.emplace_back(head,len);
+                args_.emplace_back(head, len);
                 return true;
             });
     }
 
+    // TODO: handle possible overflow
     size_t fillPack(void *pack) const {
         SourceInfoPacked *data = static_cast<SourceInfoPacked*>(pack);
         data->parent_count = parents_.size();
@@ -232,11 +231,11 @@ class CDEIndex {
 
 
   public:
-    CDEIndex(const string& projectPath, const string& storePath)
+    CDEIndex(const string &projectPath, const string& storePath)
             : storePath_(storePath) {
         string projPath = projectPath;
         files_.reserve(MININDEXALLOC);
-        push(0, projPath, 0, NOPARENTS);
+        push(0, projPath);
     }
 
     inline std::vector<SourceInfo>::const_iterator begin() {
@@ -251,7 +250,9 @@ class CDEIndex {
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
         if (id >= files_.size()) {
-            files_.emplace_back(id, path, time, parentCount, parents);
+            // cout << "Pushing " << id << "|" << path<< endl;
+            files_.emplace_back(id, path,
+                           time, parentCount, parents);
             SourceInfo *ret = &files_[files_.size() - 1];
             hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
                                               ret->fileId_));
@@ -275,7 +276,7 @@ class CDEIndex {
     /** get translation unit for current file*/
     uint32_t getAnyTU(uint32_t file) {
         uint32_t token = file;
-        while (files_[token].parents_.size() != 1 ||
+        while (files_[token].parents_.size() > 0 &&
                files_[token].parents_[0] != ROOTID) {
             token = files_[token].parents_[0];
         }
@@ -361,5 +362,5 @@ class CDEIndex {
     virtual void completion(uint32_t fid, const string &prefix,
                             uint32_t line, uint32_t column) = 0;
     virtual ~CDEIndex() {
-    };
+    }
 };

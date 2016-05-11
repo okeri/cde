@@ -12,3 +12,4 @@ target_link_libraries(test_external ${Boost_LIBRARIES})
 
 add_test(fileutil test_fileutil)
 add_test(external test_external)
+set_tests_properties(external PROPERTIES TIMEOUT 10)

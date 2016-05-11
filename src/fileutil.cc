@@ -16,7 +16,6 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-#include <iostream>
 #include <string.h>
 
 #ifdef _WIN32
@@ -26,7 +25,9 @@
 #include <dirent.h>
 #endif
 
+#include <iostream>
 #include <fstream>
+
 #include "fileutil.h"
 
 namespace fileutil {
@@ -60,7 +61,7 @@ static bool endsWithLow(const std::string &str, const std::string &end) {
 }
 
 bool isHeader(const std::string &path) {
-    static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++",""};
+    static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++", ""};
     if (path.find(".") == std::string::npos) {
         return true;
     }
@@ -114,7 +115,7 @@ std::string basenameNoExt(const std::string &filename) {
     size_t start = filename.rfind(SEPARATOR);
     size_t end = filename.rfind(".");
     if (start != std::string::npos) {
-        start ++;
+        start++;
     } else {
         start = 0;
     }
@@ -179,9 +180,8 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
     static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
-
         // find beginning of line
-        position --;
+        position--;
         bool sv = position > sizeof(buffer);
         if (sv) {
             is.seekg(position - sizeof(buffer), is.beg);
@@ -261,4 +261,4 @@ std::string purify(const std::string &path) {
     return ret;
 }
 
-}  // namespace
+}  // namespace fileutil

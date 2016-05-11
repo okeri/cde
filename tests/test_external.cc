@@ -48,6 +48,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     // ack
     cde.send(std::string("A ") + path + "simple/simple.cpp\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
+    // TODO: more hideif tests
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") + path +
                       "simple/simple.cpp\" '((9 10)))\n");
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
@@ -63,6 +64,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(),
                       "(setq cde--process nil)(save-buffers-kill-terminal)\n");
     cde.close();
+    // TODO: add headers recursive loop
     // restore index
     BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
                                                    + cache).c_str()), true);

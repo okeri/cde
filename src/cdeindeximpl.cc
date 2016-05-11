@@ -16,8 +16,6 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-#include <iostream>
-#include <iomanip>
 
 #include <llvm/Support/CrashRecoveryContext.h>
 #include <llvm/Config/llvm-config.h>
@@ -33,6 +31,9 @@
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Lex/PreprocessingRecord.h>
 #include <clang/Lex/Preprocessor.h>
+
+#include <iostream>
+#include <iomanip>
 
 #include "cdeindex.h"
 #include "gccsupport.h"
@@ -183,8 +184,9 @@ class CiConsumer : public CodeCompleteConsumer {
                 const string &entry = completion->getTypedText();
                 if (entry != "" && strncmp("operator", entry.c_str(), 8) &&
                     entry[0] != '~') {
-                    if (prefix_ == "" || !strncmp(prefix_.c_str(), entry.c_str(),
-                                                  prefix_.length())) {
+                    if (prefix_ == "" ||
+                        !strncmp(prefix_.c_str(), entry.c_str(),
+                                 prefix_.length())) {
                         if (!hasFilteredResults) {
                             cout << "(cde--handle-completions '(";
                             hasFilteredResults = true;
@@ -194,7 +196,7 @@ class CiConsumer : public CodeCompleteConsumer {
                         size_t annoLen = 0, resultLen = 0;
                         for (auto it = completion->begin();
                              it != completion->end(); ++it) {
-                            switch(it->Kind) {
+                            switch (it->Kind) {
                                 case CodeCompletionString::CK_Optional:
                                     break;
                                 case CodeCompletionString::CK_VerticalSpace:
@@ -345,7 +347,6 @@ bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
         if (decl) {
             record(tl.getBeginLoc(), decl);
         }
-
     }
     return true;
 }
@@ -434,7 +435,6 @@ bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
 void CDEIndexImpl::completion(uint32_t fid,
                               const string &prefix, uint32_t line,
                               uint32_t column) {
-
     ASTUnit *unit = getParsedTU(fid, false);
     if (unit == nullptr) {
         return;
@@ -501,7 +501,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     PreprocessingRecord &pp = *unit->getPreprocessor()
             .getPreprocessingRecord();
 
-    for (const auto &it: pp) {
+    for (const auto &it : pp) {
         switch (it->getKind()) {
             case PreprocessedEntity::EntityKind::MacroExpansionKind: {
                 MacroExpansion *me(cast<MacroExpansion>(it));
@@ -580,7 +580,6 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
         if (!haveNostdinc(tu)) {
-
             // clang include path
             args.push_back(getClangIncludeArg());
 
@@ -751,7 +750,8 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                         links[file][line] = pos;
                     } else {
                         const auto &found = links[file].find(line);
-                        if (found == links[file].end() || pos.first > found->first) {
+                        if (found == links[file].end() ||
+                            pos.first > found->first) {
                             links[file][line] = pos;
                         }
                      }
@@ -845,15 +845,16 @@ bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
                 } else if (const TemplateSpecializationType *tst =
                            nns->getAsType()
                            ->getAs<TemplateSpecializationType>()) {
-
                     if (TemplateDecl *decl = tst->getTemplateName()
                         .getAsTemplateDecl()) {
-                        if (NamedDecl *templatedDecl = decl->getTemplatedDecl()) {
+                        if (NamedDecl *templatedDecl
+                            = decl->getTemplatedDecl()) {
                             record(nnsl.getLocalBeginLoc(), templatedDecl);
                         }
                     }
                 }
                 break;
+
             default:
                 break;
         }
@@ -879,13 +880,14 @@ void CDEIndexImpl::loadPCHData() {
 
     ASTUnit *unit;
     FileSystemOptions fsopts;
-    for (const auto& it: files) {
+    for (const auto& it : files) {
         uint32_t id = 0;
         id = stoi(fileutil::basenameNoExt(it));
         if (id != 0) {
             const SourceInfo *si = find(id);
             if (fileutil::fileTime(si->fileName()) < si->time()) {
-                cout << "(message \"tryreal " << si->fileName() << "\")" << endl;
+                cout << "(message \"tryreal " << si->fileName()
+                     << "\")" << endl;
                 auto readASTData = [=, &unit] {
                     IntrusiveRefCntPtr<DiagnosticsEngine>
                     diags(CompilerInstance::createDiagnostics(
