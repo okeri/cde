@@ -45,8 +45,8 @@ BOOST_AUTO_TEST_CASE(TestFilenameSeparatorFunctions) {
     BOOST_CHECK_EQUAL(prefix + "somedir", path);
 
 #ifndef _WIN32
+    // check fs-root '/' handles correcly
     path = SEPARATOR;
-
     std::string cmp(path);
     fileutil::deleteTrailingSep(&path);
     BOOST_CHECK_EQUAL(cmp, path);
@@ -78,14 +78,15 @@ BOOST_AUTO_TEST_CASE(TestFilenameSeparatorFunctions) {
 BOOST_AUTO_TEST_CASE(TestFilenameExtensionFunctions) {
     // basenameNoExt
     BOOST_CHECK_EQUAL("somefile", fileutil::basenameNoExt("somefile"));
-    BOOST_CHECK_EQUAL("somefile", fileutil::basenameNoExt(prefix + "somefile.ext"));
+    BOOST_CHECK_EQUAL("somefile", fileutil::basenameNoExt(prefix +
+                                                          "somefile.ext"));
 
-    // externsion
+    // extension
     BOOST_CHECK_EQUAL(".ext", fileutil::extension(prefix + "somefile.ext"));
     BOOST_CHECK_EQUAL(".ext", fileutil::extension("somefile.ext"));
     BOOST_CHECK_EQUAL("", fileutil::extension(prefix + "somefile"));
     BOOST_CHECK_EQUAL("", fileutil::extension(prefix + "some.file" +
-                                                  SEPARATOR + "somefile"));
+                                              SEPARATOR + "somefile"));
 }
 
 BOOST_AUTO_TEST_CASE(TestLineInFile) {

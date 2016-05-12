@@ -73,22 +73,26 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cde.send(std::string("A ") + path + "simple/simple.h\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
 
-    // in case index not restored, diagnostics will show #pragma once warning here
+    // in case index is not restored, diagnostics will show #pragma once
+    // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
 
     // hdr/src.
     cde.send(std::string("F ") + path + "simple " + path + "simple/simple.h\n");
-    BOOST_CHECK_EQUAL(cde.recv(), "(find-file \"" + path + "simple/simple.cpp\")\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(find-file \"" + path +
+                      "simple/simple.cpp\")\n");
 
     // def
-    cde.send(std::string("D ") + path + "simple " + path + "simple/simple.cpp 148\n");
+    cde.send(std::string("D ") + path + "simple " + path +
+             "simple/simple.cpp 148\n");
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(find-file \"") + path +
                       "simple/simple.h\")(goto-char (point-min))(forward-char "
                       "172)(push (list \"" + path + "simple/simple.cpp\" 147) "
                       "cde--ring)\n");
 
     // ref
-    cde.send(std::string("R ") + path + "simple " + path + "simple/simple.h 173\n");
+    cde.send(std::string("R ") + path + "simple " + path +
+             "simple/simple.h 173\n");
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--ref-setup '(\"") + path +
                       "simple/simple.cpp\" (7 \"array[0].run1(42);\") ))\n");
 
