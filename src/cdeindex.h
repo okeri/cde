@@ -107,7 +107,7 @@ class SourceInfo {
 
         inline char *filename() {
             return reinterpret_cast<char *>(
-                parents() + sizeof(uint32_t) * parent_count);
+                parents() + parent_count);
         }
     };
 
@@ -138,16 +138,16 @@ class SourceInfo {
             });
     }
 
-    // TODO: handle possible overflow
-    size_t fillPack(void *pack) const {
+    size_t fillPack(void *pack, size_t bufSize) const {
         SourceInfoPacked *data = static_cast<SourceInfoPacked*>(pack);
         data->parent_count = parents_.size();
         data->updated_time = updated_time_;
         if (data->parent_count != 0) {
             std::copy(parents_.begin(), parents_.end(), data->parents());
         }
-        strcpy(data->filename(), filename_.c_str());
-        return 65 + filename_.length() + sizeof(uint32_t) * data->parent_count;
+        size_t ret = 65 + sizeof(uint32_t) * data->parent_count;
+        snprintf(data->filename(), bufSize - ret, "%s", filename_.c_str());
+        return ret + filename_.length();
     }
 
     void setTime(uint32_t updated_time) {
@@ -250,7 +250,6 @@ class CDEIndex {
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
         if (id >= files_.size()) {
-            // cout << "Pushing " << id << "|" << path<< endl;
             files_.emplace_back(id, path,
                            time, parentCount, parents);
             SourceInfo *ret = &files_[files_.size() - 1];

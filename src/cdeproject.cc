@@ -51,7 +51,7 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
 
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
-    // FIXME: !!! critical !!! some data in db had sizeof(uint32_t) key size
+
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
             index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
@@ -271,7 +271,7 @@ CDEProject::~CDEProject() {
     unsigned char pack[2048];
 
     for (const auto& it : *index_) {
-        uint32_t size = it.fillPack(pack);
+        uint32_t size = it.fillPack(pack, sizeof(pack));
         Dbt data(pack, size);
         num = it.getId();
         db_.put(NULL, &key, &data, 0);

@@ -197,8 +197,7 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
             return "cannot parse file";
         }
 
-        // if buffer is full, save newline->endofbuffer
-        // and read other data
+        // if buffer is full, save newline->endofbuffer and read other data
         if (read == sizeof(buffer)) {
             size_t start = read + buffer - tok;
             memmove(buffer, tok, start);
