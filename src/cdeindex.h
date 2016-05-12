@@ -25,7 +25,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
-#include <queue>
 #include <algorithm>
 #include "fileutil.h"
 #include "strbreak.h"
@@ -86,7 +85,7 @@ struct CI_KEY {
 enum { ROOTID = 0 };
 // assume some average project has --> 1024 files.
 enum { MININDEXALLOC = 0x400 };
-
+enum { MINPARENTNODEALLOC = 0x100 };
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
@@ -249,7 +248,7 @@ class CDEIndex {
     void push(uint32_t id, const string &path,
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
-        if (id >= files_.size()) {
+        if (id >= files_.size()) {  //  mostly prevents secont root insert
             files_.emplace_back(id, path,
                            time, parentCount, parents);
             SourceInfo *ret = &files_[files_.size() - 1];
@@ -284,24 +283,27 @@ class CDEIndex {
 
     /** get all translation units for current file*/
     const unordered_set<uint32_t> getAllTUs(uint32_t file) {
-        unordered_set<uint32_t> ret;
-        queue<SourceInfo *> stk;
-        SourceInfo *token;
-        stk.push(&files_[file]);
+        unordered_set<uint32_t> result;
+        vector<uint32_t> nodes;
+        unsigned curNode;
+        nodes.reserve(MINPARENTNODEALLOC);
+        nodes.push_back(files_[file].fileId_);
 
-        while (!stk.empty()) {
-            token = stk.front();
-            stk.pop();
+        for (curNode = 0; curNode < nodes.size(); ++curNode) {
+            SourceInfo *token = &files_[nodes[curNode]];
             for (auto it = token->parents_.begin();
                  it != token->parents_.end(); ++it) {
-                stk.push(&files_[*it]);
+                if (std::find(nodes.begin(), nodes.end(), *it) ==
+                    nodes.end()) {
+                    nodes.push_back(*it);
+                }
                 if (token->parents_.size() == 1 &&
                     token->parents_[0] == ROOTID) {
-                    ret.insert(token->fileId_);
+                    result.insert(token->fileId_);
                 }
             }
         }
-        return ret;
+        return result;
     }
 
     /** get a file from index, or add it if files is not present in index*/

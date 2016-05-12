@@ -37,6 +37,9 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     std::string ack("(setq-local cde--project \"");
     ack += path + "simple\")\n";
 
+    std::string srcfilename(path + "simple" +
+                            boost::filesystem::path::preferred_separator +
+                            "simple.cpp");
     // create cache dir
     std::string cache(path + "cache");
     boost::filesystem::create_directory(cache);
@@ -45,16 +48,15 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
                                                    + cache).c_str()), true);
 
+
     // ack
-    cde.send(std::string("A ") + path + "simple/simple.cpp\n");
+    cde.send(std::string("A ") + srcfilename + "\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
-    // TODO: more hideif tests
-    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") + path +
-                      "simple/simple.cpp\" '((9 10)))\n");
+    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
+                      srcfilename + "\" '((9 10)))\n");
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
     // complete
-    cde.send(std::string("C ") + path + "simple " + path + "simple/simple.cpp" +
-             " p 6 10\n");
+    cde.send(std::string("C ") + path + "simple " + srcfilename + " p 6 10\n");
     BOOST_CHECK_EQUAL(cde.recv(),
                       "(cde--handle-completions '((\"void pop_back()\" 5 13)"
                       "(\"void push_back(const value_type &__x)\" 5 14)"
@@ -64,37 +66,37 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(),
                       "(setq cde--process nil)(save-buffers-kill-terminal)\n");
     cde.close();
-    // TODO: add headers recursive loop
     // restore index
     BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
                                                    + cache).c_str()), true);
 
+    std::string hdrfilename(path + "simple" +
+                            boost::filesystem::path::preferred_separator +
+                            "simple.h");
     // ack
-    cde.send(std::string("A ") + path + "simple/simple.h\n");
+    cde.send(std::string("A ") + hdrfilename + "\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
 
+    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
+                      hdrfilename + "\" '((7 7)(10 11)(15 15)(21 22)))\n");
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
 
     // hdr/src.
-    cde.send(std::string("F ") + path + "simple " + path + "simple/simple.h\n");
-    BOOST_CHECK_EQUAL(cde.recv(), "(find-file \"" + path +
-                      "simple/simple.cpp\")\n");
+    cde.send(std::string("F ") + path + "simple " + hdrfilename + "\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(find-file \"" + srcfilename + "\")\n");
 
     // def
-    cde.send(std::string("D ") + path + "simple " + path +
-             "simple/simple.cpp 148\n");
-    BOOST_CHECK_EQUAL(cde.recv(), std::string("(find-file \"") + path +
-                      "simple/simple.h\")(goto-char (point-min))(forward-char "
-                      "172)(push (list \"" + path + "simple/simple.cpp\" 147) "
-                      "cde--ring)\n");
+    cde.send(std::string("D ") + path + "simple " + srcfilename + " 148\n");
+    BOOST_CHECK_EQUAL(cde.recv(), std::string("(find-file \"") + hdrfilename +
+                      "\")(goto-char (point-min))(forward-char 390)(push "
+                      "(list \"" + srcfilename + "\" 147) cde--ring)\n");
 
     // ref
-    cde.send(std::string("R ") + path + "simple " + path +
-             "simple/simple.h 173\n");
-    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--ref-setup '(\"") + path +
-                      "simple/simple.cpp\" (7 \"array[0].run1(42);\") ))\n");
+    cde.send(std::string("R ") + path + "simple " + hdrfilename +  " 391\n");
+    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--ref-setup '(\"") +
+                      srcfilename + "\" (7 \"array[0].run1(42);\") ))\n");
 
     // quit
     cde.send("Q\n");

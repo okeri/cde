@@ -1,5 +1,26 @@
 #pragma once
+#include "simple_r.h"
 #include <iostream>
+
+#ifdef MYDEF1
+#define DUMMY Dummy
+#else
+#endif
+
+#ifndef MYDEF1
+#define DUMMY Dummy
+#else
+#endif
+
+#ifndef MYDEF1
+#else
+typedef int integer;
+#endif
+
+#ifdef MYDEF1
+#else
+typedef int integer;
+#endif
 
 class Dummy {
     int i_;
