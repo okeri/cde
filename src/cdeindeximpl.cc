@@ -543,7 +543,10 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     for (const auto &s : skipped) {
         file = getLocStr(s.getBegin(), &dummy, &b);
         if (file == filename && file == getLocStr(s.getEnd(), &dummy, &e)) {
-            filtered.push_back(std::make_pair(b, e -1));
+            e--;
+            if (b != e) {
+                filtered.push_back(std::make_pair(b, e));
+            }
         }
     }
 

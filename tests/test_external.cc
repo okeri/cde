@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(), ack);
 
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
-                      hdrfilename + "\" '((7 7)(10 11)(15 15)(21 22)))\n");
+                      hdrfilename + "\" '((10 11)(21 22)))\n");
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
