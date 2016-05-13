@@ -24,8 +24,11 @@
 
 CDEIndex *createIndex(const string& projectPath, const string& storePath,
                      bool pch);
-
+#if DB_VERSION_MAJOR > 5
 static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
+#else
+static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
+#endif
     if (dbt1->size == dbt2->size) {
          if (dbt1->size == sizeof(uint32_t)) {
             return *static_cast<int*>(dbt1->data) -
