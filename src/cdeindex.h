@@ -46,6 +46,7 @@ struct CI_DATA {
 struct CI_KEY {
     uint32_t file;
     uint32_t pos;
+
     bool operator<(const CI_KEY &rhs) const {
         if (file == rhs.file) {
             return (pos < rhs.pos);
@@ -82,10 +83,23 @@ struct CI_KEY {
 
 #pragma pack(pop)
 
+
+namespace std {
+
+template <>
+struct hash<CI_KEY> {
+    size_t operator()(const CI_KEY& k) const {
+        return hash<int>()(k.file) ^ (hash<int>()(k.pos) << 1);
+    }
+};
+
+}  // namespace std
+
 enum { ROOTID = 0 };
 // assume some average project has --> 1024 files.
 enum { MININDEXALLOC = 0x400 };
 enum { MINPARENTNODEALLOC = 0x100 };
+
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
@@ -161,18 +175,6 @@ class SourceInfo {
         return fileId_ == rhs.fileId_;
     }
 };
-
-namespace std {
-
-template <>
-struct hash<CI_KEY> {
-    size_t operator()(const CI_KEY& k) const {
-        return hash<int>()(k.file) ^ (hash<int>()(k.pos) << 1);
-    }
-};
-
-}
-
 
 class CDEIndex {
     std::vector<SourceInfo> files_;

@@ -25,15 +25,33 @@
 CDEIndex *createIndex(const string& projectPath, const string& storePath,
                      bool pch);
 
+static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
+    if (dbt1->size == dbt2->size) {
+         if (dbt1->size == sizeof(uint32_t)) {
+            return *static_cast<int*>(dbt1->data) -
+                    *static_cast<int*>(dbt2->data);
+        } else {
+            CI_KEY *k1(static_cast<CI_KEY*>(dbt1->data)),
+                    *k2(static_cast<CI_KEY*>(dbt2->data));
+            if (*k1 < *k2) {
+                return -1;
+            } else if (*k2 < *k1) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+    return dbt1->size - dbt2->size;
+}
+
 CDEProject::CDEProject(const string &projectPath, const string &store,
                              bool pch)
         : db_(NULL, 0) {
+
     // init database
     string dbpath(store + SEPARATOR);
     size_t offset = dbpath.length();
-
     dbpath += projectPath;
-
     for (auto it = begin(dbpath) + offset; it != end(dbpath); ++it) {
         if (*it == SEPARATOR) {
             *it = '!';
@@ -42,16 +60,15 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
 
     index_ = createIndex(projectPath, dbpath, pch);
     dbpath += ".cache";
+    db_.set_bt_compare(BDBKeyCmp);
     db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
 
     // read index
     Dbc *curs;
     Dbt key, data;
     SourceInfo::SourceInfoPacked *pack;
-
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
-
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
             index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
@@ -119,8 +136,10 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
     index_->parse(file, true);
-    unordered_map<CI_KEY, uint32_t> results;
 
+    // TODO: change container and sort results with ordering by
+    // referenced line
+    unordered_map<CI_KEY, uint32_t> results;
     for (const auto& r : index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
