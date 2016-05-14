@@ -32,8 +32,6 @@
 #define DF_NONE              0x0
 #define DF_FWD               0x1
 
-using namespace std;
-
 #pragma pack(push, 1)
 
 struct CI_DATA {
@@ -103,9 +101,9 @@ enum { MINPARENTNODEALLOC = 0x100 };
 class SourceInfo {
     uint32_t fileId_;
     uint32_t updated_time_;
-    string filename_;
-    vector<string> args_;
-    vector<uint32_t> parents_;
+    std::string filename_;
+    std::vector<std::string> args_;
+    std::vector<uint32_t> parents_;
 
     friend class CDEIndex;
 
@@ -124,7 +122,7 @@ class SourceInfo {
         }
     };
 
-    SourceInfo(uint32_t fid, const string& filename,
+    SourceInfo(uint32_t fid, const std::string& filename,
                uint32_t updated_time = 0, uint32_t parentCount = 0,
                uint32_t *parents = nullptr)
             : fileId_(fid), updated_time_(updated_time),
@@ -139,11 +137,11 @@ class SourceInfo {
         return fileId_;
     }
 
-    inline const string& fileName() const {
+    inline const std::string& fileName() const {
         return filename_;
     }
 
-    inline void setArgs(const string& args) {
+    inline void setArgs(const std::string& args) {
         args_.resize(0);
         strBreak(args, [this] (const char* head, size_t len) {
                 args_.emplace_back(head, len);
@@ -182,10 +180,10 @@ class CDEIndex {
     std::hash<std::string> hashStr;
 
   protected:
-    string storePath_;
+    std::string storePath_;
 
   public:
-    unordered_map<CI_KEY, CI_DATA> records_;
+    std::unordered_map<CI_KEY, CI_DATA> records_;
 
   private:
     inline const SourceInfo* getDominatedParent(const SourceInfo * si) const {
@@ -196,13 +194,13 @@ class CDEIndex {
         return token;
     }
 
-    inline const vector<string> &args(uint32_t file) const {
+    inline const std::vector<std::string> &args(uint32_t file) const {
         return getDominatedParent(&files_[file])->args_;
     }
 
   protected:
     bool haveNostdinc(uint32_t file) const {
-        const vector<string> &arguments = args(file);
+        const std::vector<std::string> &arguments = args(file);
         for (const auto &s : arguments) {
             if (s == "-nostdinc") {
                 return true;
@@ -212,15 +210,15 @@ class CDEIndex {
     }
 
     void copyArgsToClangArgs(uint32_t file,
-                             vector<const char*> *clang_args) const {
-        const vector<string> &arguments = args(file);
+                             std::vector<const char*> *clang_args) const {
+        const std::vector<std::string> &arguments = args(file);
         for (const auto &s : arguments) {
             clang_args->push_back(s.c_str());
         }
     }
 
     /** get SourceInfo or nullptr by filename */
-    SourceInfo* find(const string &filename) {
+    SourceInfo* find(const std::string &filename) {
         auto it = hfilenames_.find(hashStr(filename));
         return it != hfilenames_.end() ? &files_[it->second] : nullptr;
     }
@@ -232,9 +230,9 @@ class CDEIndex {
 
 
   public:
-    CDEIndex(const string &projectPath, const string& storePath)
+    CDEIndex(const std::string &projectPath, const std::string& storePath)
             : storePath_(storePath) {
-        string projPath = projectPath;
+        std::string projPath = projectPath;
         files_.reserve(MININDEXALLOC);
         push(0, projPath);
     }
@@ -247,9 +245,15 @@ class CDEIndex {
         return files_.end();
     }
 
-    void push(uint32_t id, const string &path,
+    void push(uint32_t id, const std::string &path,
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
+        if (id != files_.size()) {
+            std::cout << "ERR ";
+            std::cout << "push " << id << " to " << files_.size()
+                      << " | " << path << std::endl;
+        }
+
         if (id >= files_.size()) {  //  mostly prevents secont root insert
             files_.emplace_back(id, path,
                            time, parentCount, parents);
@@ -260,7 +264,7 @@ class CDEIndex {
     }
 
     /** find files in index  ending with filename*/
-    uint32_t findFile(const string &filename) {
+    uint32_t findFile(const std::string &filename) {
         const auto &end = files_.end();
         auto it = find_if(
             files_.begin(), end,
@@ -284,9 +288,9 @@ class CDEIndex {
     }
 
     /** get all translation units for current file*/
-    const unordered_set<uint32_t> getAllTUs(uint32_t file) {
-        unordered_set<uint32_t> result;
-        vector<uint32_t> nodes;
+    const std::unordered_set<uint32_t> getAllTUs(uint32_t file) {
+        std::unordered_set<uint32_t> result;
+        std::vector<uint32_t> nodes;
         unsigned curNode;
         nodes.reserve(MINPARENTNODEALLOC);
         nodes.push_back(files_[file].fileId_);
@@ -309,7 +313,7 @@ class CDEIndex {
     }
 
     /** get a file from index, or add it if files is not present in index*/
-    uint32_t getFile(const string &filename, uint32_t parent = ROOTID) {
+    uint32_t getFile(const std::string &filename, uint32_t parent = ROOTID) {
         SourceInfo *found = find(filename);
         if (found != nullptr) {
             return found->fileId_;
@@ -322,7 +326,7 @@ class CDEIndex {
 
     /** set parent-child dependency*/
     inline void link(uint32_t file, uint32_t pid) {
-        vector<uint32_t> &parents = files_[file].parents_;
+        std::vector<uint32_t> &parents = files_[file].parents_;
         const auto &end = parents.end();
         if (std::find(parents.begin(), end, pid) == end) {
             // remove wrong TU's if they have another dependencies
@@ -334,24 +338,24 @@ class CDEIndex {
         }
     }
 
-    inline const string& fileName(uint32_t fid) {
+    inline const char *fileName(uint32_t fid) {
         if (fid < files_.size()) {
-            return files_[fid].fileName();
+            return files_[fid].fileName().c_str();
         }
-        static string error("<error>");
-        return error;
+        return "<error>";
     }
 
-    inline const string& projectPath() {
+    inline const std::string& projectPath() {
         return files_[ROOTID].filename_;
     }
 
-    inline void setGlobalArgs(const string &args) {
+    inline void setGlobalArgs(const std::string &args) {
         files_[ROOTID].setArgs(args);
     }
 
-    void fillIncludes(uint32_t file, unordered_set<string> *includes) const {
-        const vector<string> &arguments = args(file);
+    void fillIncludes(uint32_t file,
+                      std::unordered_set<std::string> *includes) const {
+        const std::vector<std::string> &arguments = args(file);
         for (const auto &s : arguments) {
             if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
                 includes->emplace(s.c_str() + 2, s.length() - 2);
@@ -362,8 +366,8 @@ class CDEIndex {
     virtual bool parse(uint32_t fid, bool recursive) = 0;
     virtual void preprocess(uint32_t fid) = 0;
     virtual void loadPCHData() = 0;
-    virtual void completion(uint32_t fid, const string &prefix,
-                            uint32_t line, uint32_t column) = 0;
+    virtual void completion(uint32_t fid, const std::string &prefix,
+                            uint32_t line, std::uint32_t column) = 0;
     virtual ~CDEIndex() {
     }
 };

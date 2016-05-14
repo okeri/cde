@@ -25,8 +25,8 @@
 
 
 int main(int argc, char *argv[]) {
-    string path(DEFAULT_PATH);
-    string gccpath(DEFAULT_GCC_PATH);
+    std::string path(DEFAULT_PATH);
+    std::string gccpath(DEFAULT_GCC_PATH);
     bool pch = false;
 
     for (unsigned i = 0; i < argc; ++i) {
@@ -59,11 +59,11 @@ int main(int argc, char *argv[]) {
     fileutil::deleteTrailingSep(&path);
 
     CDE cde(path, pch);
-    string command, last;
-    vector<string> commands(8);
+    std::string command, last;
+    std::vector<std::string> commands(8);
 
     // Looks like we do not need error handling here :P
-    while (getline(cin, command)) {
+    while (getline(std::cin, command)) {
         commands.resize(0);
         strBreak(command, [&commands](const char* head, size_t len) {
             commands.emplace_back(head, len);

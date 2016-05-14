@@ -157,6 +157,7 @@ other switches:
   (message-box "!!!Process quit!!!")
   (setq cde--process nil))
 
+;; TODO: find a better way to save parsed data
 (defun cde-try-quit()
   (if cde--process
       (prog2 (process-send-string cde--process "Q\n") nil) t))

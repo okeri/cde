@@ -60,15 +60,13 @@ class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
     friend class RecursiveASTVisitor<CDEIndexImpl>;
 
-  private:
     ASTContext *context_;
     SourceManager *sm_;
-    shared_ptr<PCHContainerOperations> pchOps_;
-    map<uint32_t, ASTUnit*> units_;
+    std::shared_ptr<PCHContainerOperations> pchOps_;
+    std::map<uint32_t, ASTUnit*> units_;
     bool pch_;
 
-  private:
-    string getPCHFilename(uint32_t n);
+    std::string getPCHFilename(uint32_t n);
     inline const FileEntry *feFromLocation(const SourceLocation &location) {
         FileID fileID = sm_->getFileID(location);
 
@@ -81,7 +79,7 @@ class CDEIndexImpl : public CDEIndex,
         return sm_->getFileEntryForSLocEntry(sloc);
     }
 
-    string getLocStr(const SourceLocation &location,
+    std::string getLocStr(const SourceLocation &location,
                      uint32_t *pos, uint32_t *line = nullptr);
 
     uint32_t getLoc(const SourceLocation &location,
@@ -91,7 +89,7 @@ class CDEIndexImpl : public CDEIndex,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void handleDiagnostics(string tuFile, const StoredDiagnostic *begin,
+    void handleDiagnostics(std::string tuFile, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
                            bool onlyErrors);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
@@ -112,9 +110,10 @@ class CDEIndexImpl : public CDEIndex,
                        const StoredDiagnostic *end, uint32_t *errline,
                        uint32_t *errcol);
   public:
-    CDEIndexImpl(const string &projectPath, const string &storePath, bool pch);
+    CDEIndexImpl(const std::string &projectPath, const std::string &storePath,
+                 bool pch);
     bool parse(uint32_t fid, bool recursive);
-    void completion(uint32_t fid, const string &prefix,
+    void completion(uint32_t fid, const std::string &prefix,
                     uint32_t line, uint32_t column);
     void preprocess(uint32_t fid);
     void loadPCHData();
@@ -125,7 +124,7 @@ class CiConsumer : public CodeCompleteConsumer {
     IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccAllocator_;
     CodeCompletionTUInfo info_;
     IntrusiveRefCntPtr<DiagnosticOptions> diagOpts_;
-    const string &prefix_;
+    const std::string &prefix_;
 
   public:
     IntrusiveRefCntPtr<DiagnosticsEngine> diag;
@@ -140,7 +139,7 @@ class CiConsumer : public CodeCompleteConsumer {
 
   public:
     CiConsumer(const CodeCompleteOptions &CodeCompleteOpts,
-               IntrusiveRefCntPtr<FileManager> fm, const string &prefix)
+               IntrusiveRefCntPtr<FileManager> fm, const std::string &prefix)
             : CodeCompleteConsumer(CodeCompleteOpts, false),
               ccAllocator_(new GlobalCodeCompletionAllocator),
               info_(ccAllocator_),
@@ -167,11 +166,11 @@ class CiConsumer : public CodeCompleteConsumer {
                                     unsigned numResults) override {
         if (!numResults || diag->hasErrorOccurred() ||
             diag->hasFatalErrorOccurred()) {
-            cout << "(funcall cde--callback '())" << endl;
+            std::cout << "(funcall cde--callback '())" << std::endl;
             return;
         }
 
-        stable_sort(results, results + numResults);
+        std::stable_sort(results, results + numResults);
         bool hasFilteredResults = false;
         // Print the results.
         for (unsigned i = 0; i != numResults; ++i) {
@@ -181,17 +180,17 @@ class CiConsumer : public CodeCompleteConsumer {
                         includeBriefComments());
 
             if (!completion->getAvailability()) {
-                const string &entry = completion->getTypedText();
+                const std::string &entry = completion->getTypedText();
                 if (entry != "" && strncmp("operator", entry.c_str(), 8) &&
                     entry[0] != '~') {
                     if (prefix_ == "" ||
                         !strncmp(prefix_.c_str(), entry.c_str(),
                                  prefix_.length())) {
                         if (!hasFilteredResults) {
-                            cout << "(cde--handle-completions '(";
+                            std::cout << "(cde--handle-completions '(";
                             hasFilteredResults = true;
                         }
-                        cout << "(\"";
+                        std::cout << "(\"";
                         bool started = false;
                         size_t annoLen = 0, resultLen = 0;
                         for (auto it = completion->begin();
@@ -200,23 +199,23 @@ class CiConsumer : public CodeCompleteConsumer {
                                 case CodeCompletionString::CK_Optional:
                                     break;
                                 case CodeCompletionString::CK_VerticalSpace:
-                                    cout << " ";
+                                    std::cout << " ";
                                     break;
                                 case CodeCompletionString::CK_Text:
                                 case CodeCompletionString::CK_Informative:
-                                    cout << it->Text;
+                                    std::cout << it->Text;
                                     if (resultLen != 0 && !started) {
                                         resultLen += strlen(it->Text);
                                     }
                                     break;
                                 case CodeCompletionString::CK_ResultType:
-                                    cout << it->Text << " ";
+                                    std::cout << it->Text << " ";
                                     resultLen += strlen(it->Text) + 1;
                                     break;
                                 case CodeCompletionString::CK_LeftParen:
                                     started = true;
                                 default:
-                                    cout << it->Text;
+                                    std::cout << it->Text;
                                     break;
                             }
 
@@ -230,30 +229,31 @@ class CiConsumer : public CodeCompleteConsumer {
                             }
                         }
                         if (completion->getBriefComment() != nullptr) {
-                            cout << "  // " << completion->getBriefComment();
+                            std::cout << "  // "
+                                      << completion->getBriefComment();
                         }
-                        cout << "\" " << resultLen << " ";
+                        std::cout << "\" " << resultLen << " ";
                         resultLen += entry.length();
-                        cout << resultLen;
+                        std::cout << resultLen;
                         if (completion->getBriefComment() != nullptr) {
                             resultLen += annoLen;
-                            cout << " " << resultLen;
+                            std::cout << " " << resultLen;
                         }
-                        cout << ")";
+                        std::cout << ")";
                     }
                 }
             }
         }
         if (!hasFilteredResults) {
-            cout << "(funcall cde--callback '())";
+            std::cout << "(funcall cde--callback '())";
         } else {
-            cout << "))" << endl;
+            std::cout << "))" << std::endl;
         }
     }
 };
 
-CDEIndexImpl::CDEIndexImpl(const string& projectPath, const string& storePath,
-                           bool pch)
+CDEIndexImpl::CDEIndexImpl(const std::string& projectPath,
+                           const std::string& storePath, bool pch)
         : CDEIndex(projectPath, storePath),
           pchOps_(new PCHContainerOperations()), pch_(pch) {
 }
@@ -274,8 +274,8 @@ CDEIndexImpl::~CDEIndexImpl() {
 }
 
 
-CDEIndex *createIndex(const string& projectPath, const string& storePath,
-                      bool pch) {
+CDEIndex *createIndex(const std::string& projectPath,
+                      const std::string& storePath, bool pch) {
     return new CDEIndexImpl(projectPath, storePath, pch);
 }
 
@@ -285,22 +285,18 @@ bool CDEIndexImpl::VisitDeclRefExpr(DeclRefExpr *e) {
     return true;
 }
 
-
 bool CDEIndexImpl::VisitCXXConstructExpr(CXXConstructExpr *e) {
     record(e->getLocation(), e->getConstructor());
     return true;
 }
-
 
 bool CDEIndexImpl::VisitMemberExpr(MemberExpr *e) {
     record(e->getMemberLoc(), e->getMemberDecl()->getCanonicalDecl());
     return true;
 }
 
-
 void CDEIndexImpl::record(const SourceLocation &locRef,
-                          const SourceLocation &locDef,
-                          bool fwd) {
+                          const SourceLocation &locDef, bool fwd) {
     CI_KEY ref;
     CI_DATA def;
     uint32_t refline, line;
@@ -417,7 +413,7 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
 
 bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
     if (recursive) {
-        unordered_set<uint32_t> tus = getAllTUs(fid);
+        std::unordered_set<uint32_t> tus = getAllTUs(fid);
         const auto &end = tus.end();
         for (auto it : tus) {
             if (!parse(it, fid, PF_BUILDMAP | PF_ALLDIAG)) {
@@ -433,14 +429,14 @@ bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
 
 // looks like in most cases we need only buffer of current file
 void CDEIndexImpl::completion(uint32_t fid,
-                              const string &prefix, uint32_t line,
+                              const std::string &prefix, uint32_t line,
                               uint32_t column) {
     ASTUnit *unit = getParsedTU(fid, false);
     if (unit == nullptr) {
         return;
     }
 
-    const string &filename = fileName(fid);
+    const std::string &filename = fileName(fid);
     // find error location and compare it to complete location
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
@@ -448,7 +444,7 @@ void CDEIndexImpl::completion(uint32_t fid,
         getFirstError(filename, unit->stored_diag_begin(),
                       unit->stored_diag_end(), &errline, &errcol);
         if (errline < line || (errline == line && errcol < column)) {
-            cout << "(funcall cde--callback '())" << endl;
+            std::cout << "(funcall cde--callback '())" << std::endl;
             return;
         }
     }
@@ -484,7 +480,7 @@ void CDEIndexImpl::completion(uint32_t fid,
 }
 
 static const char *getClangIncludeArg() {
-    static string clangInc("-I");
+    static std::string clangInc("-I");
     if (clangInc == "-I") {
         clangInc += LLVM_PREFIX;
         clangInc += "/lib/clang/";
@@ -538,7 +534,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
     std::vector<std::pair<uint32_t, uint32_t> > filtered;
     uint32_t b, e, dummy;
-    string file;
+    std::string file;
 
     for (const auto &s : skipped) {
         file = getLocStr(s.getBegin(), &dummy, &b);
@@ -551,11 +547,11 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 
     if (!filtered.empty()) {
-        cout << "(cde--hideif \"" << filename << "\" '(";
+        std::cout << "(cde--hideif \"" << filename << "\" '(";
         for (const auto &f : filtered) {
-            cout << "(" << f.first << " " << f.second << ")";
+            std::cout << "(" << f.first << " " << f.second << ")";
         }
-        cout << "))" << endl;
+        std::cout << "))" << std::endl;
     }
 }
 
@@ -565,7 +561,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         return nullptr;
     }
 
-    unique_ptr<ASTUnit> errUnit;
+    std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
     const auto &unitIter = units_.find(tu);
@@ -573,7 +569,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         unit = unitIter->second;
         unit->Reparse(pchOps_, emacsMapper::mapped());
     } else {
-        vector<const char *> args;
+        std::vector<const char *> args;
         args.reserve(16);
 
         args.push_back("-Xclang");
@@ -587,13 +583,14 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
             args.push_back(getClangIncludeArg());
 
             // gcc includes
-            const unordered_set<string> &gcc_includes = gccSupport::includes();
+            const std::unordered_set<std::string> &gcc_includes
+                    = gccSupport::includes();
             for (const auto &i : gcc_includes) {
                 args.push_back(i.c_str());
             }
         }
 
-        args.push_back(fileName(tu).c_str());
+        args.push_back(fileName(tu));
 
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
@@ -678,7 +675,7 @@ void CDEIndexImpl::getFirstError(const std::string &filename,
                 continue;
             }
 
-            string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+            std::string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
             while (file != filename) {
                 sl = sloc.getFile().getIncludeLoc();
                 fileID = sm_->getFileID(sl);
@@ -697,17 +694,18 @@ void CDEIndexImpl::getFirstError(const std::string &filename,
     }
 }
 
-void CDEIndexImpl::handleDiagnostics(string tuFile,
+void CDEIndexImpl::handleDiagnostics(std::string tuFile,
                                      const StoredDiagnostic *begin,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors) {
     if (begin == end) {
-        cout << "(cde--error-rep nil nil nil)" << endl;
+        std::cout << "(cde--error-rep nil nil nil)" << std::endl;
         return;
     }
-    vector<string> errors;
-    map<string, map<uint32_t, pair<unsigned, size_t> > > directs;
-    map<string, map<uint32_t, pair<unsigned, size_t> > > links;
+    std::vector<std::string> errors;
+    std::map<std::string, std::map<uint32_t, std::pair<unsigned, size_t> > >
+            directs, links;
+
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
         if (*it) {
             unsigned level = levelIndex(it->getLevel());
@@ -724,8 +722,9 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
                 // register diagnostic message
                 errors.push_back(it->getMessage().str());
 
-                string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
-                pair<unsigned, size_t> pos(level, errors.size() - 1);
+                std::string file
+                        = sm_->getFileEntryForSLocEntry(sloc)->getName();
+                std::pair<unsigned, size_t> pos(level, errors.size() - 1);
                 uint32_t line = sm_->getExpansionLineNumber(sl);
 
                 // add diagnostic to current file
@@ -764,40 +763,40 @@ void CDEIndexImpl::handleDiagnostics(string tuFile,
     }
 
     if (errors.empty()) {
-        cout << "(cde--error-rep nil nil nil)" << endl;
+        std::cout << "(cde--error-rep nil nil nil)" << std::endl;
         return;
     }
 
-    cout << "(cde--error-rep [";
+    std::cout << "(cde--error-rep [";
     // construct errors list
     for (const auto& it : errors) {
-        cout << quoted(it) << " ";
+        std::cout << quoted(it) << " ";
     }
-    cout << "] '(";
+    std::cout << "] '(";
     // construct direct position list
     for (const auto& it : directs) {
-        cout << "(\"" << it.first << "\".(";
+        std::cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
-            cout << "(" << pit.first << ".(" << pit.second.first
+            std::cout << "(" << pit.first << ".(" << pit.second.first
                  << " " << pit.second.second << "))";
         }
-        cout << "))";
+        std::cout << "))";
     }
-    cout << ") '(";
+    std::cout << ") '(";
     // construct links position list
     for (const auto& it : links) {
-        cout << "(\"" << it.first << "\".(";
+        std::cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
-            cout << "(" << pit.first << ".(" << pit.second.first
+            std::cout << "(" << pit.first << ".(" << pit.second.first
                  << " " << pit.second.second << "))";
         }
-        cout << "))";
+        std::cout << "))";
     }
 
-    cout << "))" << endl;
+    std::cout << "))" << std::endl;
 }
 
-string CDEIndexImpl::getLocStr(const SourceLocation &location,
+std::string CDEIndexImpl::getLocStr(const SourceLocation &location,
                  uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
     const FileEntry *fe = feFromLocation(expansionLoc);
@@ -866,8 +865,8 @@ bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
     return true;
 }
 
-string CDEIndexImpl::getPCHFilename(uint32_t n) {
-    return storePath_ + SEPARATOR + to_string(n) + ".pch";
+std::string CDEIndexImpl::getPCHFilename(uint32_t n) {
+    return storePath_ + SEPARATOR + std::to_string(n) + ".pch";
 }
 
 
@@ -878,7 +877,7 @@ void CDEIndexImpl::loadPCHData() {
 
     return;
 
-    forward_list<string> files;
+    std::forward_list<std::string> files;
     fileutil::collectFiles(storePath_, &files, false);
 
     ASTUnit *unit;
@@ -889,8 +888,8 @@ void CDEIndexImpl::loadPCHData() {
         if (id != 0) {
             const SourceInfo *si = find(id);
             if (fileutil::fileTime(si->fileName()) < si->time()) {
-                cout << "(message \"tryreal " << si->fileName()
-                     << "\")" << endl;
+                std::cout << "(message \"tryreal " << si->fileName()
+                     << "\")" << std::endl;
                 auto readASTData = [=, &unit] {
                     IntrusiveRefCntPtr<DiagnosticsEngine>
                     diags(CompilerInstance::createDiagnostics(
@@ -904,7 +903,8 @@ void CDEIndexImpl::loadPCHData() {
                 if (CRC.RunSafelyOnThread(readASTData, 8 << 20)) {
                     if (unit) {
                         units_[id] = unit;
-                        cout << "(message \"reloaded " << id << "\")" << endl;
+                        std::cout << "(message \"reloaded " << id
+                                  << "\")" << std::endl;
                     }
                 }
             }

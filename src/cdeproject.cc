@@ -22,8 +22,9 @@
 #include "fileutil.h"
 #include "cdeproject.h"
 
-CDEIndex *createIndex(const string& projectPath, const string& storePath,
-                     bool pch);
+CDEIndex *createIndex(const std::string& projectPath,
+                      const std::string& storePath, bool pch);
+
 #if DB_VERSION_MAJOR > 5
 static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
 #else
@@ -47,12 +48,11 @@ static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
     return dbt1->size - dbt2->size;
 }
 
-CDEProject::CDEProject(const string &projectPath, const string &store,
+CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                              bool pch)
         : db_(NULL, 0) {
-
     // init database
-    string dbpath(store + SEPARATOR);
+    std::string dbpath(store + SEPARATOR);
     size_t offset = dbpath.length();
     dbpath += projectPath;
     for (auto it = begin(dbpath) + offset; it != end(dbpath); ++it) {
@@ -87,10 +87,10 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
     curs->close();
 
     // load proj values
-    ifstream f(projectPath + SEPARATOR + PRJ_EASY);
+    std::ifstream f(projectPath + SEPARATOR + PRJ_EASY);
     if (f) {
-        string content((istreambuf_iterator<char>(f)),
-                       istreambuf_iterator<char>());
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
     }
     if (pch) {
@@ -100,8 +100,8 @@ CDEProject::CDEProject(const string &projectPath, const string &store,
 }
 
 
-string CDEProject::findProjectRoot(const string &projectPath) {
-    for (string root = projectPath; root != "";
+std::string CDEProject::findProjectRoot(const std::string &projectPath) {
+    for (std::string root = projectPath; root != "";
          root = fileutil::dirUp(root)) {
         if (fileutil::fileExists(root + PRJ_EASY) ||
             fileutil::fileExists(root + PRJ_CCJ)) {
@@ -112,37 +112,37 @@ string CDEProject::findProjectRoot(const string &projectPath) {
 }
 
 
-void CDEProject::updateProjectFile(const string &filename) {
+void CDEProject::updateProjectFile(const std::string &filename) {
     index_->parse(index_->getFile(filename), true);
 }
 
 
-void CDEProject::definition(const string &filename, uint32_t pos) {
+void CDEProject::definition(const std::string &filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
     index_->parse(ref.file, true);
 
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
         const CI_DATA &def = defIt->second;
-        cout << "(find-file \"";
-        cout << index_->fileName(def.file)
+        std::cout << "(find-file \"";
+        std::cout << index_->fileName(def.file)
              << "\")(goto-char (point-min))(forward-char " << def.pos
              << ")(push (list \"" << filename
-             << "\" " << pos << ") cde--ring)" << endl;
+             << "\" " << pos << ") cde--ring)" << std::endl;
     } else {
-        cout << "(dframe-message \"No definition found\")" << endl;
+        std::cout << "(dframe-message \"No definition found\")" << std::endl;
     }
 }
 
 
-void CDEProject::references(const string &filename, uint32_t pos) {
+void CDEProject::references(const std::string &filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
     index_->parse(file, true);
 
     // TODO: change container and sort results with ordering by
     // referenced line
-    unordered_map<CI_KEY, uint32_t> results;
+    std::unordered_map<CI_KEY, uint32_t> results;
     for (const auto& r : index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
@@ -163,49 +163,53 @@ void CDEProject::references(const string &filename, uint32_t pos) {
     }
 
     if (results.empty()) {
-        cout << "(message \"No references found\")" << endl;
+        std::cout << "(message \"No references found\")" << std::endl;
     } else {
-        string last = "", current;
-        cout << "(cde--ref-setup '(";
+        std::string last = "", current;
+        std::cout << "(cde--ref-setup '(";
         for (const auto& r : results) {
             current = index_->fileName(r.first.file);
             if (last != current) {
-                cout << "\"" << current << "\" ";
+                std::cout << "\"" << current << "\" ";
                 last = current;
             }
-            cout << "(" << r.second << " "
-                 << quoted(fileutil::findLineInFile(current, r.first.pos))
-                 << ") ";
+            std::cout << "(" << r.second << " "
+                      << std::quoted(fileutil::findLineInFile(current,
+                                                              r.first.pos))
+                      << ") ";
         }
-        cout << "))" << endl;
+        std::cout << "))" << std::endl;
     }
 }
 
 // TODO: use score calculation for findfile/swapSrcHdr
-void CDEProject::findfile(const string &filename, const string &parent) {
+void CDEProject::findfile(const std::string &filename,
+                          const std::string &parent) {
     uint32_t file = index_->findFile(filename);
     if (file != INVALID) {
-        cout << "(find-file \"" << index_->fileName(file) << "\")" << endl;
+        std::cout << "(find-file \"" << index_->fileName(file)
+                  << "\")" << std::endl;
     } else {
         uint32_t pfile = index_->getFile(parent);
-        unordered_set<string> includes;
+        std::unordered_set<std::string> includes;
         includes.insert(fileutil::dirUp(parent));
         index_->fillIncludes(pfile, &includes);
         for (const auto& include_path : includes) {
-            string test = include_path;
+            std::string test = include_path;
             fileutil::addTrailingSep(&test);
             test += filename;
             if (fileutil::fileExists(test)) {
-                cout << "(find-file \"" << test << "\")" << endl;
+                std::cout << "(find-file \"" << test << "\")" << std::endl;
                 return;
             }
         }
-        cout << "(message \"'" << filename << "' file not found\")" << endl;
+        std::cout << "(message \"'" << filename << "' file not found\")"
+                  << std::endl;
     }
 }
 
-void CDEProject::swapSrcHdr(const string &filename) {
-    static string exts[][9] = {
+void CDEProject::swapSrcHdr(const std::string &filename) {
+    static std::string exts[][9] = {
         {".c", ".h", ".H", ""},
         {".cc", ".hh", ".h", ".H", ""},
         {".cpp", ".hpp", ".h", ".hh", ".H", ""},
@@ -221,20 +225,20 @@ void CDEProject::swapSrcHdr(const string &filename) {
         {""}
     };
 
-    const string &ext = fileutil::extension(filename);
+    const std::string &ext = fileutil::extension(filename);
     if (ext == "") {
-        cout << "(message \"file " << filename << " have no extension\")"
-             << endl;
+        std::cout << "(message \"file " << filename << " have no extension\")"
+             << std::endl;
         return;
     }
 
-    const string &base  = fileutil::basenameNoExt(filename);
+    const std::string &base  = fileutil::basenameNoExt(filename);
 
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
             uint32_t file = index_->getFile(filename);
-            unordered_set<string> includes;
-            string test;
+            std::unordered_set<std::string> includes;
+            std::string test;
             includes.insert(fileutil::dirUp(filename));
             index_->fillIncludes(file, &includes);
             for (const auto& include_path : includes) {
@@ -242,47 +246,49 @@ void CDEProject::swapSrcHdr(const string &filename) {
                 fileutil::addTrailingSep(&test);
                 test += base;
                 for (unsigned i = 1; exts[extIter][i] != ""; ++i) {
-                    string testfile = test + exts[extIter][i];
+                    std::string testfile = test + exts[extIter][i];
                     if (fileutil::fileExists(testfile)) {
-                        cout << "(find-file \"" << testfile << "\")" << endl;
+                        std::cout << "(find-file \"" << testfile << "\")"
+                                  << std::endl;
                         return;
                      }
                 }
             }
-            goto end;
+            std::cout << "(message \"cannot find pair for " << filename
+                      << "\")" << std::endl;
         }
     }
-end:
-    cout << "(message \"cannot find pair for " << filename << "\")" << endl;
+    std::cout << "(message \"cannot find pair for " << filename
+              << "\")" << std::endl;
 }
 
-bool CDEProject::fileInProject(const string &filename) const {
+bool CDEProject::fileInProject(const std::string &filename) const {
     return index_->findFile(filename) != INVALID;
 }
 
-
-void CDEProject::acknowledge(const string &filename) {
-    cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
-         << endl;
+void CDEProject::acknowledge(const std::string &filename) {
+    std::cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
+         << std::endl;
     index_->preprocess(index_->getFile(filename));
 }
 
 void CDEProject::scanProject() {
-    forward_list<string> files;
+    std::forward_list<std::string> files;
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it : files) {
-        cout << "(dframe-message \"parsing " << it << "\")" << endl;
+        std::cout << "(dframe-message \"parsing " << it << "\")" << std::endl;
         updateProjectFile(it);
     }
-    cout << "(dframe-message \"Done!\")" << endl;
+    std::cout << "(dframe-message \"Done!\")" << std::endl;
 }
 
-void CDEProject::check(const string &filename) {
+void CDEProject::check(const std::string &filename) {
     index_->parse(index_->getFile(filename), false);
 }
 
-void CDEProject::completion(const string &filename, const string &prefix,
-                               uint32_t line, uint32_t column) {
+void CDEProject::completion(const std::string &filename,
+                            const std::string &prefix,
+                            uint32_t line, uint32_t column) {
     index_->completion(index_->getFile(filename), prefix, line, column);
 }
 
@@ -290,22 +296,27 @@ CDEProject::~CDEProject() {
     // Store file info
     uint32_t num;
     Dbt key(&num, sizeof(uint32_t));
+    Dbt data;
     unsigned char pack[2048];
-
-    for (const auto& it : *index_) {
-        uint32_t size = it.fillPack(pack, sizeof(pack));
-        Dbt data(pack, size);
-        num = it.getId();
+    for (auto it = index_->begin() + 1; it != index_->end(); ++it) {
+        uint32_t size = it->fillPack(pack, sizeof(pack));
+        data.set_data(pack);
+        data.set_size(size);
+        num = it->getId();
         db_.put(NULL, &key, &data, 0);
     }
 
     // Store ref-def pairs
-    for (auto it : index_->records_) {
-        Dbt key(const_cast<CI_KEY*>(&it.first), sizeof(CI_KEY));
-        Dbt data(const_cast<CI_DATA*>(&it.second), sizeof(CI_DATA));
+    key.set_size(sizeof(CI_KEY));
+    data.set_size(sizeof(CI_DATA));
+
+    for (const auto &it : index_->records_) {
+        key.set_data(const_cast<CI_KEY*>(&it.first));
+        data.set_data(const_cast<CI_DATA*>(&it.second));
         db_.put(NULL, &key, &data, 0);
     }
     delete index_;
 
-    cout << "(setq cde--process nil)(save-buffers-kill-terminal)" << endl;
+    std::cout << "(setq cde--process nil)(save-buffers-kill-terminal)"
+              << std::endl;
 }

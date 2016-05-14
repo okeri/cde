@@ -29,19 +29,20 @@ class CDEProject {
     CDEIndex *index_;
 
   public:
-    CDEProject(const string &projectPath, const string &store, bool pch);
+    CDEProject(const std::string &projectPath,
+               const std::string &store, bool pch);
     ~CDEProject();
-    bool fileInProject(const string &filename) const;
+    bool fileInProject(const std::string &filename) const;
     void scanProject();
-    void check(const string &filename);
-    void updateProjectFile(const string &filename);
-    void definition(const string &filename, uint32_t pos);
-    void references(const string &filename, uint32_t pos);
-    void findfile(const string &filename, const string &parent);
-    void swapSrcHdr(const string &filename);
-    void acknowledge(const string &filename);
-    void completion(const string &filename, const string &prefix, uint32_t line,
-                    uint32_t column);
-  public:
-    static string findProjectRoot(const string &projectPath);
+    void check(const std::string &filename);
+    void updateProjectFile(const std::string &filename);
+    void definition(const std::string &filename, uint32_t pos);
+    void references(const std::string &filename, uint32_t pos);
+    void findfile(const std::string &filename, const std::string &parent);
+    void swapSrcHdr(const std::string &filename);
+    void acknowledge(const std::string &filename);
+    void completion(const std::string &filename, const std::string &prefix,
+                    uint32_t line, uint32_t column);
+
+    static std::string findProjectRoot(const std::string &projectPath);
 };

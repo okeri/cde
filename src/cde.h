@@ -21,19 +21,19 @@
 #include "cdeproject.h"
 
 class CDE {
-    string storePath_;
+    std::string storePath_;
+    std::unordered_map<std::string, CDEProject> projects_;
     bool pch_;
-    unordered_map<string, CDEProject> projects_;
 
-    inline CDEProject& getProject(const string &path) {
+    inline CDEProject& getProject(const std::string &path) {
         return projects_.find(path)->second;
     }
 
-    CDEProject& getProjectByFilename(const string &filename) {
+    CDEProject& getProjectByFilename(const std::string &filename) {
         const auto& end = projects_.end();
         const auto& found =  find_if(
             projects_.begin(), end,
-            [filename] (const pair<const string, CDEProject> &p) {
+            [filename] (const std::pair<const std::string, CDEProject> &p) {
                 return p.second.fileInProject(filename);
             });
 
@@ -41,7 +41,7 @@ class CDE {
             return found->second;
         }
 
-        string root = CDEProject::findProjectRoot(
+        std::string root = CDEProject::findProjectRoot(
             fileutil::dirUp(filename));
         fileutil::deleteTrailingSep(&root);
 
@@ -50,18 +50,19 @@ class CDE {
             return fsfound->second;
         }
 
-        return projects_.emplace(piecewise_construct, forward_as_tuple(root),
-                                 forward_as_tuple(root, storePath_, pch_))
+        return projects_.emplace(std::piecewise_construct,
+                                 std::forward_as_tuple(root),
+                                 std::forward_as_tuple(root, storePath_, pch_))
                 .first->second;
     }
 
   public:
-    CDE(const string &store, bool pch)
+    CDE(const std::string &store, bool pch)
             : storePath_(store), pch_(pch) {
     }
 
-    inline void update(const string &projectpath,
-                       const string &filename) {
+    inline void update(const std::string &projectpath,
+                       const std::string &filename) {
         if (filename != "") {
             getProject(projectpath).updateProjectFile(filename);
         } else {
@@ -69,30 +70,32 @@ class CDE {
         }
     }
 
-    inline void check(const string &projectpath, const string &filename) {
+    inline void check(const std::string &projectpath,
+                      const std::string &filename) {
         getProject(projectpath).check(filename);
     }
 
-    inline void definition(const string &projectpath, const string &filename,
-                           uint32_t pos) {
+    inline void definition(const std::string &projectpath,
+                           const std::string &filename, uint32_t pos) {
         getProject(projectpath).definition(filename, pos);
     }
 
-    inline void references(const string &projectpath, const string &filename,
-                           uint32_t pos) {
+    inline void references(const std::string &projectpath,
+                           const std::string &filename, uint32_t pos) {
         getProject(projectpath).references(filename, pos);
     }
 
-    inline void completion(const string &projectpath, const string &filename,
-                           const string &prefix, uint32_t line,
+    inline void completion(const std::string &projectpath,
+                           const std::string &filename,
+                           const std::string &prefix, uint32_t line,
                            uint32_t column) {
         getProject(projectpath).completion(filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde
     // that's why we searching file in index first
-    inline void findfile(const string &projectpath, const string &from,
-                         const string &filename) {
+    inline void findfile(const std::string &projectpath,
+                         const std::string &from, const std::string &filename) {
         if (filename == "") {
             getProject(projectpath).swapSrcHdr(from);
         } else {
@@ -100,7 +103,7 @@ class CDE {
         }
     }
 
-    inline void ack(const string &filename) {
+    inline void ack(const std::string &filename) {
         getProjectByFilename(filename).acknowledge(filename);
     }
 };
