@@ -248,19 +248,10 @@ class CDEIndex {
     void push(uint32_t id, const std::string &path,
                             uint32_t time = 0, uint32_t parentCount = 0,
                             uint32_t *parents = nullptr) {
-        if (id != files_.size()) {
-            std::cout << "ERR ";
-            std::cout << "push " << id << " to " << files_.size()
-                      << " | " << path << std::endl;
-        }
-
-        if (id >= files_.size()) {  //  mostly prevents secont root insert
-            files_.emplace_back(id, path,
-                           time, parentCount, parents);
-            SourceInfo *ret = &files_[files_.size() - 1];
-            hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
-                                              ret->fileId_));
-        }
+        files_.emplace_back(id, path, time, parentCount, parents);
+        SourceInfo *ret = &files_[files_.size() - 1];
+        hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
+                                          ret->fileId_));
     }
 
     /** find files in index  ending with filename*/
