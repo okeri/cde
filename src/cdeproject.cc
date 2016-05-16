@@ -298,10 +298,10 @@ CDEProject::~CDEProject() {
     Dbt key(&num, sizeof(uint32_t));
     Dbt data;
     unsigned char pack[2048];
+    data.set_data(pack);
+
     for (auto it = index_->begin() + 1; it != index_->end(); ++it) {
-        uint32_t size = it->fillPack(pack, sizeof(pack));
-        data.set_data(pack);
-        data.set_size(size);
+        data.set_size(it->fillPack(pack, sizeof(pack)));
         num = it->getId();
         db_.put(NULL, &key, &data, 0);
     }
