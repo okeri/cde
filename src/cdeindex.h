@@ -29,12 +29,11 @@
 #include "fileutil.h"
 #include "strbreak.h"
 
-#define DF_NONE              0x0
-#define DF_FWD               0x1
-
-#pragma pack(push, 1)
-
 struct CI_DATA {
+    enum Flags : uint8_t {
+        None = 0x0,
+        Forward = 0x1
+    };
     uint32_t file;
     uint32_t pos;
     uint32_t refline : 30;
@@ -79,8 +78,6 @@ struct CI_KEY {
     }
 };
 
-#pragma pack(pop)
-
 
 namespace std {
 
@@ -93,10 +90,6 @@ struct hash<CI_KEY> {
 
 }  // namespace std
 
-enum { ROOTID = 0 };
-// assume some average project has --> 1024 files.
-enum { MININDEXALLOC = 0x400 };
-enum { MINPARENTNODEALLOC = 0x100 };
 
 class SourceInfo {
     uint32_t fileId_;
@@ -230,6 +223,10 @@ class CDEIndex {
 
 
   public:
+
+    // assume some average project has --> 1024 files.
+    enum { MININDEXALLOC = 0x400 };
+
     CDEIndex(const std::string &projectPath, const std::string& storePath)
             : storePath_(storePath) {
         std::string projPath = projectPath;
@@ -268,6 +265,8 @@ class CDEIndex {
         return INVALID;
     }
 
+    enum { ROOTID = 0 };
+
     /** get translation unit for current file*/
     uint32_t getAnyTU(uint32_t file) {
         uint32_t token = file;
@@ -277,6 +276,8 @@ class CDEIndex {
         }
         return token;
     }
+
+    enum { MINPARENTNODEALLOC = 0x100 };
 
     /** get all translation units for current file*/
     const std::unordered_set<uint32_t> getAllTUs(uint32_t file) {

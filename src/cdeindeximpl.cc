@@ -49,9 +49,8 @@ enum PF_FLAGS {
     PF_NOTIMECHECK = 0x8
 };
 
-inline PF_FLAGS operator|(PF_FLAGS a, PF_FLAGS b) {
-    return static_cast<PF_FLAGS>(static_cast<unsigned>(a) |
-                                 static_cast<unsigned>(b));
+constexpr PF_FLAGS operator | (PF_FLAGS a, PF_FLAGS b) {
+    return PF_FLAGS(unsigned(a) | unsigned(b));
 }
 
 using namespace clang;
@@ -170,7 +169,7 @@ class CiConsumer : public CodeCompleteConsumer {
             return;
         }
 
-        std::stable_sort(results, results + numResults);
+        std::sort(results, results + numResults);
         bool hasFilteredResults = false;
         // Print the results.
         for (unsigned i = 0; i != numResults; ++i) {
@@ -304,11 +303,11 @@ void CDEIndexImpl::record(const SourceLocation &locRef,
     ref.file = getLoc(locRef, &ref.pos, &refline);
     def.file = getLoc(locDef, &def.pos, &line);
     if (ref != def && def.file != INVALID) {
-        def.flags = DF_NONE;
+        def.flags = CI_DATA::None;
         def.refline = refline;
         records_[ref] = def;
         if (fwd) {
-            def.flags = DF_FWD;
+            def.flags = CI_DATA::Forward;
             ref.swapWithData(&def, line);
             records_[ref] = def;
         }

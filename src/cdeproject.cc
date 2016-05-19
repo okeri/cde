@@ -146,7 +146,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     for (const auto& r : index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
-            if (r.second.flags & DF_FWD) {
+            if (r.second.flags & CI_DATA::Forward) {
                 dfile = r.first.file;
                 dpos = r.first.pos;
             }
