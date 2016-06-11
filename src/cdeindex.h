@@ -224,7 +224,7 @@ class CDEIndex {
 
   public:
 
-    // assume some average project has --> 1024 files.
+    // assume some average project has 512 < files < 1024.
     enum { MININDEXALLOC = 0x400 };
 
     CDEIndex(const std::string &projectPath, const std::string& storePath)

@@ -140,9 +140,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
             dfile = INVALID, dpos;
     index_->parse(file, true);
 
-    // TODO: change container and sort results with ordering by
-    // referenced line
-    std::unordered_map<CI_KEY, uint32_t> results;
+    std::map<CI_KEY, uint32_t> results;
     for (const auto& r : index_->records_) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
