@@ -265,7 +265,7 @@ bool CDEProject::fileInProject(const std::string &filename) const {
 }
 
 void CDEProject::acknowledge(const std::string &filename) {
-    std::cout << "(setq-local cde--project \"" << index_->projectPath() << "\")"
+    std::cout << "(cde--ack \"" << index_->projectPath() << "\")"
          << std::endl;
     index_->preprocess(index_->getFile(filename));
 }

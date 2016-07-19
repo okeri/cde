@@ -58,7 +58,7 @@ other switches:
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
 (defvar cde--check-timer nil)
-(defvar-local cde--nocheck nil)
+(defvar-local cde--lock-guard nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--diags nil)
@@ -73,7 +73,7 @@ other switches:
 (defun cde-update-project()
   (interactive)
   (when cde--project
-    (cde--force-map)
+    (cde--check-map)
     (cde--send-command (concat "U " cde--project "\n"))))
 
 
@@ -86,7 +86,7 @@ other switches:
 (defun cde-symbol-def()
   (interactive)
   (when cde--project
-    (cde--force-map)
+    (cde--check-map)
     (let ((line (buffer-substring-no-properties
 		 (line-beginning-position) (line-end-position))))
       (if (string-match cde--include-re line)
@@ -101,7 +101,7 @@ other switches:
 (defun cde-symbol-ref()
   (interactive)
   (when cde--project
-    (cde--force-map)
+    (cde--check-map)
     (cde--send-command (concat "R " cde--project " " buffer-file-name " "
 			       (cde--sympos-string) "\n"))))
 
@@ -181,7 +181,6 @@ other switches:
 			 (insert anno)
 			 (company-template-c-like-templatify
 			  (concat arg anno)))))
-    (no-cache t)
     (sorted t)))
 
 
@@ -219,31 +218,33 @@ other switches:
       (goto-char (point-min))
       (local-set-key (kbd "RET") 'cde-ref-jmp))))
 
-(defun cde--force-map()
+;; TODO: implement region mapping
+(defun cde--check-map()
   (when (timerp cde--check-timer)
     (cancel-timer cde--check-timer)
-    (cde--send-command (concat "M " buffer-file-name " "
-			       (int-to-string (buffer-size))
-			       "\n" (buffer-string))))
+    (unless cde--buffer-mapped
+      (cde--send-command (concat "M " buffer-file-name " "
+				 (int-to-string (buffer-size))
+				 "\n" (buffer-string)))
+      (setq-local cde--buffer-mapped t)))
   (setq cde--check-timer nil))
 
-;; TODO: implement also unmap when closing file
+;; TODO: implement also unmap when closing/saving file
+;; TODO: implement delayed check of lock is on
 (defun cde--check-handler()
-  (when cde--project
-    (cde--send-command (concat "M "  buffer-file-name " "
-			       (int-to-string (buffer-size))
-			       "\n" (buffer-string)))
-    (when (> cde-check 0)
+  (when (and cde-mode cde--project)
+    (cde--check-map)
+    (when (and (not cde--lock-guard) (> cde-check 0))
       (cde--send-command (concat "B " cde--project " "
-				 buffer-file-name "\n"))))
-  (setq cde--check-timer nil))
+				 buffer-file-name "\n")))))
 
 
 (defun cde--change (start end len)
   (when cde-mode
+    (setq-local cde--buffer-mapped nil)
     (when (timerp cde--check-timer)
       (cancel-timer cde--check-timer))
-    (unless cde--nocheck
+    (unless cde--lock-guard
       (setq cde--check-timer
 	    (run-at-time cde-check nil #'cde--check-handler)))))
 
@@ -254,9 +255,9 @@ other switches:
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
   (remove-hook 'after-change-functions 'cde--change)
-  (remove-hook 'company-completion-started-hook 'cde--check-disable)
-  (remove-hook 'company-completion-cancelled-hook 'cde--check-enable)
-  (remove-hook 'company-completion-finished-hook 'cde--check-enable)
+  (remove-hook 'company-completion-started-hook 'cde--lock)
+  (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
+  (remove-hook 'company-completion-finished-hook 'cde--unlock)
   (cde-try-quit))
 
 
@@ -268,8 +269,7 @@ other switches:
           (process-adaptive-read-buffering nil))
       (setq cde--process
             (start-process cde--process-name cde--process-buffer
-			   "cde" cde-args)
-	    cde--hold t)
+			   "cde" cde-args))
       (when cde-debug
 	(get-buffer-create "cde-dbg")
 	(buffer-disable-undo "cde-dbg"))
@@ -281,17 +281,16 @@ other switches:
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
     (add-hook 'after-change-functions 'cde--change)
-    (add-hook 'company-completion-started-hook 'cde--check-disable)
-    (add-hook 'company-completion-cancelled-hook 'cde--check-enable)
-    (add-hook 'company-completion-finished-hook 'cde--check-enable))
+    (add-hook 'company-completion-started-hook 'cde--lock)
+    (add-hook 'company-completion-cancelled-hook 'cde--unlock)
+    (add-hook 'company-completion-finished-hook 'cde--unlock))
   (cde--send-command (concat "A " buffer-file-name "\n")))
 
-(defun cde--check-enable(dummy)
-  (setq-local cde--nocheck nil)
-  (cde--change 0 1 1))
+(defun cde--unlock(dummy)
+  (setq-local cde--lock-guard nil))
 
-(defun cde--check-disable(dummy)
-  (setq-local cde--nocheck t))
+(defun cde--lock(dummy)
+  (setq-local cde--lock-guard t))
 
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
@@ -330,21 +329,22 @@ other switches:
 (defun cde--candidates(callback)
   (setq-local cde--callback callback)
   (if cde--project
-    (let ((pos (or (cde--sympos) (point))))
-      (cde--send-command (concat "C " cde--project " "
-				 buffer-file-name " "
-				 (cde--prefix) " "
-				 (int-to-string (line-number-at-pos pos)) " "
-				 (int-to-string
-				  (save-excursion (goto-char pos)
-						  (current-column))) "\n")))
+      (let ((pos (or (cde--sympos) (point))))
+	(cde--check-map)
+	(cde--send-command (concat "C " cde--project " "
+				   buffer-file-name " "
+				   (cde--prefix) " "
+				   (int-to-string (line-number-at-pos pos)) " "
+				   (int-to-string
+				    (save-excursion (goto-char pos)
+						    (current-column))) "\n")))
     (funcall callback '())))
 
 (defun cde--prefix()
   (if (not (company-in-string-or-comment))
       (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
-	      (if bounds (buffer-substring-no-properties
-			  (car bounds) (cdr bounds)) "")) "")))
+	    (if bounds (buffer-substring-no-properties
+			(car bounds) (cdr bounds)) "")) "")))
 
 (defun cde--line-to-pt(line)
   (save-excursion
@@ -373,13 +373,12 @@ other switches:
 (defun cde--error-disp()
   (let* ((line (line-number-at-pos))
   	 (current (assq line cde--diags)))
-    (unless cde--nocheck
+    (unless cde--lock-guard
       (if current
 	  (progn
 	    (setq-local cde--last-line line)
 	    (message (nth 2 current)))
 	(when (eq line cde--last-line)
-	  (message "")
 	  (setq-local cde--last-line nil))))))
 
 ;; we do not need cache results because reparse will be called on opening new
@@ -398,7 +397,11 @@ other switches:
 	  ((= level 3)
 	   (overlay-put o 'face 'cde-error-face)))))
 
-(defun cde--error-rep(errors regulars links)
+(defun cde--ack(project)
+  (setq-local cde--project project)
+  (setq-local cde--buffer-mapped t))
+
+(defun cde--error-rep(&optional errors &optional regulars &optional links)
   (when (> cde-check 0)
     (let ((project cde--project))
       (dolist (buf (buffer-list))

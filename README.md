@@ -12,6 +12,7 @@ compile_commands.json and some other formats is in roadmap)
 
 
 Build dependencies:
+POSIX OS
 clang-dev (NOT libclang)
 Berkeley DB with c++ bindings
 

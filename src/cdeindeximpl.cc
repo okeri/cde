@@ -33,6 +33,7 @@
 #include <clang/Lex/Preprocessor.h>
 
 #include <iostream>
+#include <chrono>
 #include <iomanip>
 
 #include "cdeindex.h"
@@ -169,7 +170,7 @@ class CiConsumer : public CodeCompleteConsumer {
             return;
         }
 
-        std::sort(results, results + numResults);
+        std::stable_sort(results, results + numResults);
         bool hasFilteredResults = false;
         // Print the results.
         for (unsigned i = 0; i != numResults; ++i) {
@@ -430,6 +431,9 @@ bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
 void CDEIndexImpl::completion(uint32_t fid,
                               const std::string &prefix, uint32_t line,
                               uint32_t column) {
+
+
+
     ASTUnit *unit = getParsedTU(fid, false);
     if (unit == nullptr) {
         return;
@@ -452,7 +456,6 @@ void CDEIndexImpl::completion(uint32_t fid,
     opts.IncludeBriefComments = 1;
     opts.IncludeMacros = 1;
     opts.IncludeCodePatterns = 0;
-
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
     unit->CodeComplete(filename, line, column, emacsMapper::mapped(),
                        opts.IncludeMacros, opts.IncludeCodePatterns,
@@ -698,7 +701,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
                                      const StoredDiagnostic *end,
                                      bool onlyErrors) {
     if (begin == end) {
-        std::cout << "(cde--error-rep nil nil nil)" << std::endl;
+        std::cout << "(cde--error-rep)" << std::endl;
         return;
     }
     std::vector<std::string> errors;
@@ -762,7 +765,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
     }
 
     if (errors.empty()) {
-        std::cout << "(cde--error-rep nil nil nil)" << std::endl;
+        std::cout << "(cde--error-rep)" << std::endl;
         return;
     }
 

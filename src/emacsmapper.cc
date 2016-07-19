@@ -31,8 +31,11 @@ std::vector<emacsMapper::LLVMRemappedFile> &emacsMapper::mapped() {
 }
 
 
-void emacsMapper::map(const std::string &filename, size_t size) {
-    unmap(filename);
+void emacsMapper::map(const std::string &filename, size_t size, size_t start,
+                      size_t end) {
+    if (start == std::string::npos) {
+        unmap(filename);
+    }
 
     llvm::MemoryBuffer *buffer =
             llvm::MemoryBuffer::getNewUninitMemBuffer(size).release();

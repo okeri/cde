@@ -24,13 +24,14 @@
 
 class gccSupport {
     std::unordered_set<std::string> includes_;
-  private:
-    gccSupport() {
-    }
-    static gccSupport& inst();
-  public:
+
+    gccSupport() = default;
     gccSupport(const gccSupport&) = delete;
     gccSupport& operator=(const gccSupport &) = delete;
+
+    static gccSupport& inst();
+
+  public:
     static void init(const std::string &path);
     static std::unordered_set<std::string> &includes();
 };

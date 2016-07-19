@@ -21,7 +21,7 @@
 #include <db_cxx.h>
 #include "cdeindex.h"
 
-#define PRJ_EASY                        ".prj"
+#define PRJ_EASY             ".clang_complete"
 #define PRJ_CCJ        "compile_commands.json"
 
 class CDEProject {

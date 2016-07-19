@@ -28,14 +28,17 @@
 class emacsMapper {
     typedef std::pair<std::string, llvm::MemoryBuffer *> LLVMRemappedFile;
     std::vector<LLVMRemappedFile> mapped_;
-  private:
-    emacsMapper() {
-    }
-    static emacsMapper& inst();
-  public:
+
+    emacsMapper() = default;
     emacsMapper(const emacsMapper&) = delete;
     emacsMapper& operator=(const emacsMapper &) = delete;
+
+    static emacsMapper& inst();
+
+  public:
     static std::vector<LLVMRemappedFile> &mapped();
-    static void map(const std::string &, size_t sizes);
+    static void map(const std::string &, size_t size,
+                    size_t start = std::string::npos,
+                    size_t end = std::string::npos);
     static void unmap(const std::string &);
 };
