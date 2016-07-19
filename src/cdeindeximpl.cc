@@ -414,7 +414,6 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
 bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
     if (recursive) {
         std::unordered_set<uint32_t> tus = getAllTUs(fid);
-        const auto &end = tus.end();
         for (auto it : tus) {
             if (!parse(it, fid, PF_BUILDMAP | PF_ALLDIAG)) {
                 return false;

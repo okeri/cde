@@ -16,9 +16,7 @@
 (require 'company-template)
 (require 'cl-lib)
 
-(defgroup cde nil
-  "cde mode"
-  :group 'c)
+(defgroup cde nil "cde mode" :group 'c)
 
 ;; TODO: find a valid color theme )
 (defface cde-hideif-face '((t :background "grey10"))
@@ -39,7 +37,7 @@
 
 
 ;; user variables
-(defcustom cde-args ""
+(defcustom cde-command "cde"
   "Additional arguments could be passed to cde,
 for example:
   'cde -C/tmp/cde' changes cde cache dir.
@@ -58,12 +56,14 @@ other switches:
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
 (defvar cde--check-timer nil)
+
 (defvar-local cde--lock-guard nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--diags nil)
 (defvar-local cde--last-line nil)
 (defvar-local cde--buffer-mapped nil)
+
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
@@ -157,14 +157,14 @@ other switches:
   (message-box "!!!Process quit!!!")
   (setq cde--process nil))
 
-;; TODO: find a better way to save parsed data
-(defun cde-try-quit()
-  (if cde--process
-      (prog2 (process-send-string cde--process "Q\n") nil) t))
+(defun cde-quit()
+  (when cde--process
+      (process-send-string cde--process "Q\n"))
+  t)
 
 
 (define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
-  (if cde-mode (cde--init)  (cde--deinit)))
+  (if cde-mode (cde--init) (cde--deinit)))
 
 
 (defun company-cde(command &optional arg &rest ignored)
@@ -220,33 +220,36 @@ other switches:
 
 ;; TODO: implement region mapping
 (defun cde--check-map()
-  (when (timerp cde--check-timer)
-    (cancel-timer cde--check-timer)
-    (unless cde--buffer-mapped
-      (cde--send-command (concat "M " buffer-file-name " "
-				 (int-to-string (buffer-size))
-				 "\n" (buffer-string)))
-      (setq-local cde--buffer-mapped t)))
-  (setq cde--check-timer nil))
+  (unless cde--buffer-mapped
+    (cde--send-command (concat "M " buffer-file-name " "
+			       (int-to-string (buffer-size))
+			       "\n" (buffer-string)))
+    (setq-local cde--buffer-mapped t)))
 
-;; TODO: implement also unmap when closing/saving file
-;; TODO: implement delayed check of lock is on
+
+
 (defun cde--check-handler()
-  (when (and cde-mode cde--project)
-    (cde--check-map)
-    (when (and (not cde--lock-guard) (> cde-check 0))
-      (cde--send-command (concat "B " cde--project " "
-				 buffer-file-name "\n")))))
+  (when cde-mode
+    (if (not cde--lock-guard)
+	(prog1
+	  (when (timerp cde--check-timer)
+	    (cancel-timer cde--check-timer))
+	  (cde--check-map)
+	  (setq cde--check-timer nil)
+	  (cde--send-command (concat "B " cde--project " "
+				     buffer-file-name "\n")))
+      (setq cde--check-timer
+	    (run-at-time cde-check nil #'cde--check-handler)))))
 
 
 (defun cde--change (start end len)
-  (when cde-mode
+  (when (and cde-mode  cde--project (> cde-check 0)
+	     (not (company-in-string-or-comment)))
     (setq-local cde--buffer-mapped nil)
     (when (timerp cde--check-timer)
       (cancel-timer cde--check-timer))
-    (unless cde--lock-guard
-      (setq cde--check-timer
-	    (run-at-time cde-check nil #'cde--check-handler)))))
+    (setq cde--check-timer
+	  (run-at-time cde-check nil #'cde--check-handler))))
 
 
 (defun cde--deinit()
@@ -258,18 +261,18 @@ other switches:
   (remove-hook 'company-completion-started-hook 'cde--lock)
   (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
   (remove-hook 'company-completion-finished-hook 'cde--unlock)
-  (cde-try-quit))
+  (cde-quit))
 
 
-(add-hook 'kill-emacs-query-functions 'cde-try-quit)
+(add-hook 'kill-emacs-query-functions 'cde-quit)
 
 (defun cde--init()
   (unless cde--process
     (let ((process-connection-type nil)
           (process-adaptive-read-buffering nil))
       (setq cde--process
-            (start-process cde--process-name cde--process-buffer
-			   "cde" cde-args))
+	    (start-process-shell-command cde--process-name cde--process-buffer
+					 (concat "exec nohup " cde-command)))
       (when cde-debug
 	(get-buffer-create "cde-dbg")
 	(buffer-disable-undo "cde-dbg"))
@@ -379,7 +382,8 @@ other switches:
 	    (setq-local cde--last-line line)
 	    (message (nth 2 current)))
 	(when (eq line cde--last-line)
-	  (setq-local cde--last-line nil))))))
+	  (setq-local cde--last-line nil)
+	  (message ""))))))
 
 ;; we do not need cache results because reparse will be called on opening new
 ;; file
@@ -435,7 +439,7 @@ other switches:
 			   (level (nth 0 data)))
 		      (cde--hl-line line level)
 		      (push (cons line (list level (aref errors (nth 1 data))))
-			    cde--diags)))))))))
-    (cde--error-disp)))
+			    cde--diags))))))))))
+    (cde--error-disp))
 
 (provide 'cde)
