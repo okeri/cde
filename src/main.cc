@@ -17,11 +17,9 @@
 */
 
 #include "cde.h"
+#include "config.h"
 #include "gccsupport.h"
 #include "emacsmapper.h"
-
-#define DEFAULT_PATH         "/tmp"
-#define DEFAULT_GCC_PATH     "gcc"
 
 
 int main(int argc, char *argv[]) {
@@ -53,7 +51,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (gccpath != "n" && !gccpath.empty()) {
-        gccSupport::init(gccpath);
+        GccSupport::init(gccpath);
     }
 
     fileutil::deleteTrailingSep(&path);
@@ -111,9 +109,9 @@ int main(int argc, char *argv[]) {
 
                 case 'M':
                     if (count == 3) {
-                        emacsMapper::map(commands[1], stoi(commands[2]));
+                        EmacsMapper::map(commands[1], stoi(commands[2]));
                     } else {
-                        emacsMapper::unmap(commands[1]);
+                        EmacsMapper::unmap(commands[1]);
                     }
                     break;
 

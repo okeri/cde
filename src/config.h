@@ -18,22 +18,5 @@
 
 #pragma once
 
-#include <llvm/Support/MemoryBuffer.h>
-#include <utility>
-#include <vector>
-
-class EmacsMapper {
-    typedef std::pair<std::string, llvm::MemoryBuffer *> LLVMRemappedFile;
-    std::vector<LLVMRemappedFile> mapped_;
-
-    EmacsMapper() = default;
-    EmacsMapper(const EmacsMapper&) = delete;
-    EmacsMapper& operator=(const EmacsMapper &) = delete;
-
-    static EmacsMapper& inst();
-
-  public:
-    static std::vector<LLVMRemappedFile> &mapped();
-    static void map(const std::string &, size_t);
-    static void unmap(const std::string &);
-};
+#define DEFAULT_PATH         "/tmp"
+#define DEFAULT_GCC_PATH     "gcc"

@@ -18,16 +18,17 @@
 
 #include <string.h>
 #include <iostream>
+#include "strbreak.h"
 #include "gccsupport.h"
 #include "fileutil.h"
 
-gccSupport& gccSupport::inst() {
-    static gccSupport instance;
+GccSupport& GccSupport::inst() {
+    static GccSupport instance;
     return instance;
 }
 
 
-void gccSupport::init(const std::string &path) {
+void GccSupport::init(const std::string &path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
 
     FILE *pipe = popen(cmd.c_str(), "r");
@@ -65,6 +66,6 @@ void gccSupport::init(const std::string &path) {
 }
 
 
-std::unordered_set<std::string> &gccSupport::includes() {
+std::unordered_set<std::string> &GccSupport::includes() {
     return inst().includes_;
 }

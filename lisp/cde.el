@@ -76,7 +76,6 @@ other switches:
     (cde--check-map)
     (cde--send-command (concat "U " cde--project "\n"))))
 
-
 (defun cde-header-source()
   (interactive)
   (when cde--project
@@ -96,7 +95,6 @@ other switches:
 	(cde--send-command (concat "D " cde--project " "
 				   buffer-file-name " "
 				   (cde--sympos-string) "\n"))))))
-
 
 (defun cde-symbol-ref()
   (interactive)
@@ -128,7 +126,6 @@ other switches:
     (when (not (eq line 0))
       (forward-line (1- line)))))
 
-
 (defun cde-symbol-back()
   (interactive)
   (let ((pos (car cde--ring)))
@@ -137,7 +134,6 @@ other switches:
 	      (forward-char (nth 1 pos))
 	      (setq cde--ring (cdr cde--ring)))
       (dframe-message "Jump history is empty"))))
-
 
 (defun cde-compile()
   "Suggest to compile of project directory"
@@ -151,21 +147,20 @@ other switches:
 	(setq compile-command (car compile-history))))
   (execute-extended-command nil "compile"))
 
-
 ;;; temporary
 (defun sent(process event)
   (message-box "!!!Process quit!!!")
   (setq cde--process nil))
 
+;; TODO: need to test this to ensure child process
+;; will not forced to terminate
 (defun cde-quit()
   (when cde--process
       (process-send-string cde--process "Q\n"))
   t)
 
-
 (define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
   (if cde-mode (cde--init) (cde--deinit)))
-
 
 (defun company-cde(command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -183,18 +178,15 @@ other switches:
 			  (concat arg anno)))))
     (sorted t)))
 
-
 ;; private functions
 (defun cde--sympos()
   (let ((bounds (bounds-of-thing-at-point 'symbol)))
     (if bounds (car bounds) nil)))
 
-
 (defun cde--sympos-string()
   (let ((bounds (bounds-of-thing-at-point 'symbol)))
     (if bounds
 	(int-to-string (car bounds)) nil)))
-
 
 (defun cde--ref-setup(items)
   (let ((refbuf (get-buffer-create "references")))
@@ -218,15 +210,12 @@ other switches:
       (goto-char (point-min))
       (local-set-key (kbd "RET") 'cde-ref-jmp))))
 
-;; TODO: implement region mapping
 (defun cde--check-map()
   (unless cde--buffer-mapped
     (cde--send-command (concat "M " buffer-file-name " "
 			       (int-to-string (buffer-size))
 			       "\n" (buffer-string)))
     (setq-local cde--buffer-mapped t)))
-
-
 
 (defun cde--check-handler()
   (when cde-mode
@@ -241,7 +230,6 @@ other switches:
       (setq cde--check-timer
 	    (run-at-time cde-check nil #'cde--check-handler)))))
 
-
 (defun cde--change (start end len)
   (when (and cde-mode  cde--project (> cde-check 0)
 	     (not (company-in-string-or-comment)))
@@ -250,7 +238,6 @@ other switches:
       (cancel-timer cde--check-timer))
     (setq cde--check-timer
 	  (run-at-time cde-check nil #'cde--check-handler))))
-
 
 (defun cde--deinit()
   (when (timerp cde--check-timer)
@@ -262,7 +249,6 @@ other switches:
   (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
   (remove-hook 'company-completion-finished-hook 'cde--unlock)
   (cde-quit))
-
 
 (add-hook 'kill-emacs-query-functions 'cde-quit)
 

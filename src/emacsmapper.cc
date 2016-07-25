@@ -20,22 +20,19 @@
 #include <algorithm>
 #include "emacsmapper.h"
 
-emacsMapper& emacsMapper::inst() {
-    static emacsMapper instance;
+EmacsMapper& EmacsMapper::inst() {
+    static EmacsMapper instance;
     return instance;
 }
 
 
-std::vector<emacsMapper::LLVMRemappedFile> &emacsMapper::mapped() {
+std::vector<EmacsMapper::LLVMRemappedFile> &EmacsMapper::mapped() {
     return inst().mapped_;
 }
 
 
-void emacsMapper::map(const std::string &filename, size_t size, size_t start,
-                      size_t end) {
-    if (start == std::string::npos) {
-        unmap(filename);
-    }
+void EmacsMapper::map(const std::string &filename, size_t size) {
+    unmap(filename);
 
     llvm::MemoryBuffer *buffer =
             llvm::MemoryBuffer::getNewUninitMemBuffer(size).release();
@@ -46,7 +43,7 @@ void emacsMapper::map(const std::string &filename, size_t size, size_t start,
 }
 
 
-void emacsMapper::unmap(const std::string &filename) {
+void EmacsMapper::unmap(const std::string &filename) {
     auto &mapped = inst().mapped_;
     const auto &removed  = remove_if(mapped.begin(), mapped.end(),
                            [filename](const auto& f) {

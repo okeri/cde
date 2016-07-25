@@ -456,7 +456,7 @@ void CDEIndexImpl::completion(uint32_t fid,
     opts.IncludeMacros = 1;
     opts.IncludeCodePatterns = 0;
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
-    unit->CodeComplete(filename, line, column, emacsMapper::mapped(),
+    unit->CodeComplete(filename, line, column, EmacsMapper::mapped(),
                        opts.IncludeMacros, opts.IncludeCodePatterns,
                        opts.IncludeBriefComments,
                        consumer,
@@ -568,7 +568,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
     const auto &unitIter = units_.find(tu);
     if (unitIter != units_.end()) {
         unit = unitIter->second;
-        unit->Reparse(pchOps_, emacsMapper::mapped());
+        unit->Reparse(pchOps_, EmacsMapper::mapped());
     } else {
         std::vector<const char *> args;
         args.reserve(16);
@@ -585,7 +585,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
 
             // gcc includes
             const std::unordered_set<std::string> &gcc_includes
-                    = gccSupport::includes();
+                    = GccSupport::includes();
             for (const auto &i : gcc_includes) {
                 args.push_back(i.c_str());
             }
@@ -599,7 +599,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
 
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, emacsMapper::mapped(), false, 1,
+            pchOps_, diags, "", false, true, EmacsMapper::mapped(), false, 1,
             TU_Complete,
             true, true, true, false, false, false, &errUnit);
 

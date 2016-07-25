@@ -20,16 +20,15 @@
 
 #include <string>
 #include <unordered_set>
-#include "strbreak.h"
 
-class gccSupport {
+class GccSupport {
     std::unordered_set<std::string> includes_;
 
-    gccSupport() = default;
-    gccSupport(const gccSupport&) = delete;
-    gccSupport& operator=(const gccSupport &) = delete;
+    GccSupport() = default;
+    GccSupport(const GccSupport&) = delete;
+    GccSupport& operator=(const GccSupport &) = delete;
 
-    static gccSupport& inst();
+    static GccSupport& inst();
 
   public:
     static void init(const std::string &path);
