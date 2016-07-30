@@ -55,8 +55,8 @@ int main(int argc, char *argv[]) {
     }
 
 #if defined (__linux__) || defined (__FreeBSD__)
-    signal (SIGPIPE, SIG_IGN);
-    signal (SIGHUP, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
 #endif
 
     if (gccpath != "n" && !gccpath.empty()) {

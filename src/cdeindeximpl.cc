@@ -33,7 +33,6 @@
 #include <clang/Lex/Preprocessor.h>
 
 #include <iostream>
-#include <chrono>
 #include <iomanip>
 
 #include "cdeindex.h"
@@ -476,7 +475,7 @@ void CDEIndexImpl::completion(uint32_t fid,
                           consumer.diagnostics.end(), true);
     }
 
-    // ???
+    // TODO: ???
     consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
 }
 
@@ -599,7 +598,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
 
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, EmacsMapper::mapped(), false, 1,
+            pchOps_, diags, "", false, true, EmacsMapper::mapped(), false, 0,
             TU_Complete,
             true, true, true, false, false, false, &errUnit);
 
@@ -657,6 +656,7 @@ static unsigned levelIndex(DiagnosticsEngine::Level level) {
         case DiagnosticsEngine::Error:
         case DiagnosticsEngine::Fatal:
             return 3;
+
         default:
             return 0;
     }
