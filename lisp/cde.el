@@ -257,8 +257,10 @@ other switches:
     (let ((process-connection-type nil)
           (process-adaptive-read-buffering nil))
       (setq cde--process
-	    (start-process-shell-command cde--process-name cde--process-buffer
-					 (concat "exec nohup " cde-command)))
+	    (apply 'start-process (append (list cde--process-name
+						cde--process-buffer)
+					  (split-string cde-command))))
+
       (when cde-debug
 	(get-buffer-create "cde-dbg")
 	(buffer-disable-undo "cde-dbg"))

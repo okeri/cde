@@ -25,7 +25,7 @@ void strBreak(const std::string inp, Pred handler, const size_t start = 0,
               const size_t endpoint = std::string::npos) {
     size_t tail = start, end = endpoint == std::string::npos ?
             inp.length() : endpoint, head = end;
-    for (; tail <= end; ++tail) {
+    for (; tail < end; ++tail) {
         if (isgraph(inp[tail])) {
             if (head == end) {
                 head = tail;
@@ -40,4 +40,5 @@ void strBreak(const std::string inp, Pred handler, const size_t start = 0,
             }
         }
     }
+    handler(inp.c_str() + head, tail - head);
 }
