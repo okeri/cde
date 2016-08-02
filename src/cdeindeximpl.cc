@@ -39,6 +39,7 @@
 #include "gccsupport.h"
 #include "emacsmapper.h"
 
+// TODO: replace time() with std::chrono::
 
 enum PF_FLAGS {
     PF_NONE = 0x0,
@@ -83,11 +84,13 @@ class CDEIndexImpl : public CDEIndex,
 
     uint32_t getLoc(const SourceLocation &location,
                     uint32_t *pos, uint32_t *line = nullptr);
+
     template <class D>
     inline void record(const SourceLocation &locRef, const D *decl,
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
+
     void handleDiagnostics(std::string tuFile, const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
                            bool onlyErrors);
@@ -494,10 +497,16 @@ static const char *getClangIncludeArg() {
 // because of relocations in preprocessTUforFile->getFile->push
 void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                                        bool buildMap) {
-    PreprocessingRecord &pp = *unit->getPreprocessor()
+    PreprocessingRecord *pp = unit->getPreprocessor()
             .getPreprocessingRecord();
 
-    for (const auto &it : pp) {
+    if (pp == nullptr) {
+        std::cout << "(message \"warning: preprocessor inaccessible\")"
+                  << std::endl;
+        return;
+    }
+
+    for (const auto &it : *pp) {
         switch (it->getKind()) {
             case PreprocessedEntity::EntityKind::MacroExpansionKind: {
                 MacroExpansion *me(cast<MacroExpansion>(it));
@@ -531,8 +540,8 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 
     const std::string &filename = fileName(fid);
-    const std::vector<SourceRange> &skipped = pp.getSkippedRanges();
-    std::vector<std::pair<uint32_t, uint32_t> > filtered;
+    const std::vector<SourceRange> &skipped = pp->getSkippedRanges();
+    std::vector<std::pair<uint32_t, uint32_t>> filtered;
     uint32_t b, e, dummy;
     std::string file;
 
@@ -572,6 +581,10 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         std::vector<const char *> args;
         args.reserve(16);
 
+#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR == 8)
+        // TODO: why ?
+        args.push_back("-Xclang");
+#endif
         args.push_back("-Xclang");
         args.push_back("-detailed-preprocessing-record");
         copyArgsToClangArgs(tu, &args);
@@ -600,8 +613,12 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, EmacsMapper::mapped(), false, 0,
             TU_Complete,
-            true, true, true, false, false, false, &errUnit);
+            true, true, true, false, true, false,
 
+#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
+            pchOps_->getRawReader().getFormat(),
+#endif
+            &errUnit);
         if (unit != nullptr) {
             units_[tu] = unit;
         } else {
@@ -704,7 +721,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
         return;
     }
     std::vector<std::string> errors;
-    std::map<std::string, std::map<uint32_t, std::pair<unsigned, size_t> > >
+    std::map<std::string, std::map<uint32_t, std::pair<unsigned, size_t>>>
             directs, links;
 
     for (const StoredDiagnostic* it = begin; it != end; ++it) {
@@ -896,7 +913,11 @@ void CDEIndexImpl::loadPCHData() {
                     diags(CompilerInstance::createDiagnostics(
                         new DiagnosticOptions()));
                     unit = ASTUnit::LoadFromASTFile(it, pchOps_->getRawReader(),
-                                                    diags, fsopts, false, None,
+                                                    diags, fsopts, false,
+#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
+                                                    false,
+#endif
+                                                    None,
                                                     true).release();
                 };
 

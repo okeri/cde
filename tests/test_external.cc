@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cdepath += "cde";
 
     // init prject ack from server
-    std::string ack("(setq-local cde--project \"");
+    std::string ack("(cde--ack \"");
     ack += path + "simple\")\n";
 
     std::string srcfilename(path + "simple" +
@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(), ack);
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
                       srcfilename + "\" '((9 10)))\n");
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
     // complete
     cde.send(std::string("C ") + path + "simple " + srcfilename + " p 6 10\n");
     BOOST_CHECK_EQUAL(cde.recv(),
@@ -81,7 +81,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
                       hdrfilename + "\" '((10 11)(21 22)))\n");
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep nil nil nil)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
 
     // hdr/src.
     cde.send(std::string("F ") + path + "simple " + hdrfilename + "\n");

@@ -13,13 +13,13 @@ compile_commands.json and some other formats is in roadmap)
 
 Build dependencies:
 POSIX OS
-clang-dev (NOT libclang)
-Berkeley DB with c++ bindings
+clang-3.8-dev (or higher)
+llvm-3.8-dev (or higher)
+libdb-5.1++-dev (or higher)
 
 Usage dependencies:
 emacs with company-mode installed.
 
 Known issues:
-Unstable work with clang 3.7.0 (will be fixed in future)
 
 No releases so far, project is in early development stage.
