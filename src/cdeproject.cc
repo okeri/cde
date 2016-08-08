@@ -265,7 +265,8 @@ bool CDEProject::fileInProject(const std::string &filename) const {
 }
 
 void CDEProject::acknowledge(const std::string &filename) {
-    std::cout << "(cde--ack \"" << index_->projectPath() << "\")"
+    std::cout << "(cde--ack \"" << filename << "\" \""
+              << index_->projectPath() << "\")"
          << std::endl;
     index_->preprocess(index_->getFile(filename));
 }
@@ -315,6 +316,5 @@ CDEProject::~CDEProject() {
     }
     delete index_;
 
-    std::cout << "(setq cde--process nil)(save-buffers-kill-terminal)"
-              << std::endl;
+    std::cout << "(setq cde--process nil)" << std::endl;
 }

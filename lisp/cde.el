@@ -23,15 +23,15 @@
   "Face for shadowing ifdef blocks."
   :group 'cde)
 
-(defface cde-error-face '((t :background "red"))
+(defface cde-error-face '((t :foreground "red"))
   "Face for marking compilation errors"
   :group 'cde)
 
-(defface cde-warning-face '((t :background "color-68"))
+(defface cde-warning-face '((t :foreground "color-68"))
   "Face for marking compilation warnings"
   :group 'cde)
 
-(defface cde-note-face '((t :background "color-40"))
+(defface cde-note-face '((t :foreground "color-40"))
   "Face for marking compilation notes"
   :group 'cde)
 
@@ -389,9 +389,10 @@ other switches:
 	  ((= level 3)
 	   (overlay-put o 'face 'cde-error-face)))))
 
-(defun cde--ack(project)
-  (setq-local cde--project project)
-  (setq-local cde--buffer-mapped t))
+(defun cde--ack(file project)
+  (with-current-buffer (get-file-buffer file)
+    (setq-local cde--project project)
+    (setq-local cde--buffer-mapped t)))
 
 (defun cde--error-rep(&optional errors &optional regulars &optional links)
   (when (> cde-check 0)

@@ -22,4 +22,7 @@ emacs with company-mode installed.
 
 Known issues:
 
+Segfaults)))
+
+
 No releases so far, project is in early development stage.
