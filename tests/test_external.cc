@@ -33,13 +33,15 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cdepath += boost::filesystem::path::preferred_separator;
     cdepath += "cde";
 
-    // init prject ack from server
-    std::string ack("(cde--ack \"");
-    ack += path + "simple\")\n";
 
     std::string srcfilename(path + "simple" +
                             boost::filesystem::path::preferred_separator +
                             "simple.cpp");
+
+    // init prject ack from server
+    std::string ack("(cde--ack \"");
+    ack += srcfilename + "\" \"" + path + "simple\")\n";
+
     // create cache dir
     std::string cache(path + "cache");
     boost::filesystem::create_directory(cache);
@@ -64,7 +66,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     // quit
     cde.send("Q\n");
     BOOST_CHECK_EQUAL(cde.recv(),
-                      "(setq cde--process nil)(save-buffers-kill-terminal)\n");
+                      "(setq cde--process nil)\n");
     cde.close();
     // restore index
     BOOST_REQUIRE_EQUAL(cde.open(cdepath.c_str(), (std::string("-C")
@@ -74,6 +76,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
                             boost::filesystem::path::preferred_separator +
                             "simple.h");
     // ack
+    ack = std::string("(cde--ack \"") + hdrfilename + "\" \"" + path + "simple\")\n";
     cde.send(std::string("A ") + hdrfilename + "\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
 
@@ -101,5 +104,5 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     // quit
     cde.send("Q\n");
     BOOST_CHECK_EQUAL(cde.recv(),
-                      "(setq cde--process nil)(save-buffers-kill-terminal)\n");
+                      "(setq cde--process nil)\n");
 }

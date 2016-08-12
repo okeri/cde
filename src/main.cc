@@ -16,7 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-#if defined (__linux__) || defined (__FreeBSD__)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 #include <signal.h>
 #endif
 
@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-#if defined (__linux__) || defined (__FreeBSD__)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
     signal(SIGPIPE, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
 #endif

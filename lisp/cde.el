@@ -140,11 +140,17 @@ other switches:
   (interactive)
   (when (or (not (boundp 'compile-history))
 	    (= (length compile-history) 0))
-    (setq compile-history '("make -k "))
-    (when cde--project
-      (push (concat "make -k -C " cde--project " ") compile-history))
-    (if (> (length compile-history) 0)
-	(setq compile-command (car compile-history))))
+    (setq compile-history '("make -k ")))
+  (when cde--project
+    (let ((curr (concat "make -k -C " cde--project " ")))
+      (unless (catch 'found
+		(dolist (v compile-history)
+		  (when (string-prefix-p curr v)
+		    (throw 'found t)))
+		nil)
+	(push curr compile-history))))
+  (when (> (length compile-history) 0)
+      (setq compile-command (car compile-history)))
   (execute-extended-command nil "compile"))
 
 ;;; temporary
