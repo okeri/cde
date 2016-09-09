@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     std::string path(DEFAULT_PATH);
     std::string gccpath(DEFAULT_GCC_PATH);
     bool pch = false;
-
+    bool nocache = false;
     for (unsigned i = 0; i < argc; ++i) {
         size_t len = strlen(argv[i]);
         if (len > 1 && argv[i][0] == '-') {
@@ -38,6 +38,8 @@ int main(int argc, char *argv[]) {
                 case 'C':
                     if (len > 2) {
                         path = argv[i] + 2;
+                    } else if (len == 2 && argv[i][1] == 'n') {
+                        nocache = true;
                     }
                     break;
 
@@ -65,7 +67,7 @@ int main(int argc, char *argv[]) {
 
     fileutil::deleteTrailingSep(&path);
 
-    CDE cde(path, pch);
+    CDE cde(path, nocache, pch);
     std::string command, last;
     std::vector<std::string> commands(8);
 

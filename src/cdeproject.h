@@ -27,10 +27,10 @@
 class CDEProject {
     Db db_;
     CDEIndex *index_;
-
+    bool nocache_;
   public:
     CDEProject(const std::string &projectPath,
-               const std::string &store, bool pch);
+               const std::string &store, bool nocache, bool pch);
     ~CDEProject();
     bool fileInProject(const std::string &filename) const;
     void scanProject();

@@ -49,8 +49,8 @@ static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
 }
 
 CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
-                             bool pch)
-        : db_(NULL, 0) {
+                       bool nocache, bool pch)
+        : db_(NULL, 0), nocache_(nocache) {
     // init database
     std::string dbpath(store + SEPARATOR);
     size_t offset = dbpath.length();
@@ -292,6 +292,9 @@ void CDEProject::completion(const std::string &filename,
 }
 
 CDEProject::~CDEProject() {
+    if (nocache_) {
+        return;
+    }
     // Store file info
     uint32_t num;
     Dbt key(&num, sizeof(uint32_t));

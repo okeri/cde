@@ -23,6 +23,7 @@
 class CDE {
     std::string storePath_;
     std::unordered_map<std::string, CDEProject> projects_;
+    bool nocache_;
     bool pch_;
 
     inline CDEProject& getProject(const std::string &path) {
@@ -52,13 +53,14 @@ class CDE {
 
         return projects_.emplace(std::piecewise_construct,
                                  std::forward_as_tuple(root),
-                                 std::forward_as_tuple(root, storePath_, pch_))
+                                 std::forward_as_tuple(root, storePath_,
+                                                       nocache_, pch_))
                 .first->second;
     }
 
   public:
-    CDE(const std::string &store, bool pch)
-            : storePath_(store), pch_(pch) {
+    CDE(const std::string &store, bool nocache, bool pch)
+            : storePath_(store), nocache_(nocache) ,pch_(pch) {
     }
 
     inline void update(const std::string &projectpath,
