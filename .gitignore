@@ -1,4 +1,5 @@
 *.o
-.prj
+.clang_complete
 Makefile
 cde
+**/.\#*
