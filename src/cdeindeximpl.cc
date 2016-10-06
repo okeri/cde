@@ -707,7 +707,11 @@ void CDEIndexImpl::getFirstError(const std::string &filename,
                 continue;
             }
 
-            std::string file = sm_->getFileEntryForSLocEntry(sloc)->getName();
+            const FileEntry *fe = sm_->getFileEntryForSLocEntry(sloc);
+            if (fe == nullptr) {
+                continue;
+            }
+            std::string file = fe->getName();
             while (file != filename) {
                 sl = sloc.getFile().getIncludeLoc();
                 fileID = sm_->getFileID(sl);

@@ -27,11 +27,11 @@
   "Face for marking compilation errors"
   :group 'cde)
 
-(defface cde-warning-face '((t :foreground "color-100"))
+(defface cde-warning-face '((t (:italic t :foreground "color-100")))
   "Face for marking compilation warnings"
   :group 'cde)
 
-(defface cde-note-face '((t :foreground "color-112"))
+(defface cde-note-face '((t (:italic t :foreground "color-112")))
   "Face for marking compilation notes"
   :group 'cde)
 
