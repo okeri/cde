@@ -19,6 +19,7 @@
 #pragma once
 
 #include <db_cxx.h>
+#include <memory>
 #include "cdeindex.h"
 
 #define PRJ_EASY             ".clang_complete"
@@ -26,8 +27,9 @@
 
 class CDEProject {
     Db db_;
-    CDEIndex *index_;
     bool nocache_;
+    std::unique_ptr<CDEIndex> index_;
+
   public:
     CDEProject(const std::string &projectPath,
                const std::string &store, bool nocache, bool pch);

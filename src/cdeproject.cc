@@ -61,7 +61,7 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
         }
     }
 
-    index_ = createIndex(projectPath, dbpath, pch);
+    index_.reset(createIndex(projectPath, dbpath, pch));
     dbpath += ".cache";
     db_.set_bt_compare(BDBKeyCmp);
     db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
@@ -317,7 +317,6 @@ CDEProject::~CDEProject() {
         data.set_data(const_cast<CI_DATA*>(&it.second));
         db_.put(NULL, &key, &data, 0);
     }
-    delete index_;
 
     std::cout << "(setq cde--process nil)" << std::endl;
 }

@@ -25,31 +25,25 @@ EmacsMapper& EmacsMapper::inst() {
     return instance;
 }
 
-
-std::vector<EmacsMapper::LLVMRemappedFile> &EmacsMapper::mapped() {
+EmacsMapper::RemappedFiles &EmacsMapper::mapped() {
     return inst().mapped_;
 }
 
-
 void EmacsMapper::map(const std::string &filename, size_t size) {
-    unmap(filename);
-
-    llvm::MemoryBuffer *buffer =
-            llvm::MemoryBuffer::getNewUninitMemBuffer(size).release();
+    std::string buffer(size, 0);
     if (size) {
-        std::cin.read(const_cast<char*>(buffer->getBufferStart()), size);
+        std::cin.read(const_cast<char *>(buffer.c_str()), size);
     }
-    inst().mapped_.emplace_back(filename, buffer);
+    auto &mapped = inst().mapped_;
+    const auto& found = mapped.find(filename);
+    if (found == mapped.end()) {
+        inst().mapped_.emplace(filename, buffer);
+    } else {
+        found->second = buffer;
+    }
 }
 
 
 void EmacsMapper::unmap(const std::string &filename) {
-    auto &mapped = inst().mapped_;
-    const auto &removed  = remove_if(mapped.begin(), mapped.end(),
-                           [filename](const auto& f) {
-                               return f.first == filename;
-                               });
-    if (removed != mapped.end()) {
-        mapped.erase(removed);
-    }
+    inst().mapped_.erase(filename);
 }

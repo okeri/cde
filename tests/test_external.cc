@@ -18,9 +18,11 @@
 
 #define BOOST_TEST_MODULE TestExternal
 
+#include <fstream>
 #include <boost/test/unit_test.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
+
 #include "externalprocess.h"
 
 BOOST_AUTO_TEST_CASE(TestExternalSimple) {
@@ -82,6 +84,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
                       hdrfilename + "\" '((10 11)(21 22)))\n");
+
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
@@ -101,8 +104,51 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--ref-setup '(\"") +
                       srcfilename + "\" (7 \"array[0].run1(42);\") ))\n");
 
+    // multi mapping test
+    srcfilename = path + "map" +
+            boost::filesystem::path::preferred_separator +
+            "test.cpp";
+    hdrfilename = path + "map" +
+            boost::filesystem::path::preferred_separator +
+            "test.h";
+
+    std::ifstream fsrc(srcfilename);
+    std::string src((std::istreambuf_iterator<char>(fsrc)),
+                    std::istreambuf_iterator<char>());
+
+    std::ifstream fhdr(hdrfilename);
+    std::string hdr((std::istreambuf_iterator<char>(fhdr)),
+                    std::istreambuf_iterator<char>());
+
+    fsrc.close();
+    fhdr.close();
+
+    cde.send(std::string("A ") + srcfilename + "\n");
+    cde.recv();
+    cde.recv();
+
+    cde.send(std::string("A ") + hdrfilename + "\n");
+    cde.recv();
+    cde.recv();
+
+    cde.send(std::string("M ") + srcfilename + " " + std::to_string(src.length())
+             + "\n" + src);
+    cde.send(std::string("M ") + hdrfilename + " " + std::to_string(hdr.length())
+             + "\n" + hdr);
+
+    cde.send(std::string("B ") + path + "map " +
+             srcfilename + "\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+
+    cde.send(std::string("B ") + path + "map " +
+             hdrfilename + "\n");
+
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+
+
     // quit
     cde.send("Q\n");
     BOOST_CHECK_EQUAL(cde.recv(),
                       "(setq cde--process nil)\n");
+
 }

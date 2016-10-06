@@ -16,7 +16,6 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
-
 #include <llvm/Support/CrashRecoveryContext.h>
 #include <llvm/Config/llvm-config.h>
 
@@ -137,7 +136,7 @@ class CiConsumer : public CodeCompleteConsumer {
     SmallVector<const llvm::MemoryBuffer *, 1> temporaryBuffers;
 
     // TODO: cache completions  ???
-    IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccCachedAllocator;
+    //    IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccCachedAllocator;
 
   public:
     CiConsumer(const CodeCompleteOptions &CodeCompleteOpts,
@@ -433,8 +432,6 @@ void CDEIndexImpl::completion(uint32_t fid,
                               const std::string &prefix, uint32_t line,
                               uint32_t column) {
 
-
-
     ASTUnit *unit = getParsedTU(fid, false);
     if (unit == nullptr) {
         return;
@@ -458,7 +455,14 @@ void CDEIndexImpl::completion(uint32_t fid,
     opts.IncludeMacros = 1;
     opts.IncludeCodePatterns = 0;
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
-    unit->CodeComplete(filename, line, column, EmacsMapper::mapped(),
+
+    SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
+    for (const auto &file : EmacsMapper::mapped()) {
+        std::unique_ptr<llvm::MemoryBuffer> mb =
+                llvm::MemoryBuffer::getMemBufferCopy(file.second, file.first);
+        remappedFiles.emplace_back(file.first, mb.release());
+    }
+    unit->CodeComplete(filename, line, column, remappedFiles,
                        opts.IncludeMacros, opts.IncludeCodePatterns,
                        opts.IncludeBriefComments,
                        consumer,
@@ -479,7 +483,7 @@ void CDEIndexImpl::completion(uint32_t fid,
     }
 
     // TODO: ???
-    consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
+    //    consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
 }
 
 static const char *getClangIncludeArg() {
@@ -573,10 +577,17 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
     std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
+    SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
+    for (const auto &file : EmacsMapper::mapped()) {
+        std::unique_ptr<llvm::MemoryBuffer> mb =
+                llvm::MemoryBuffer::getMemBufferCopy(file.second, file.first);
+        remappedFiles.emplace_back(file.first, mb.release());
+    }
+
     const auto &unitIter = units_.find(tu);
     if (unitIter != units_.end()) {
         unit = unitIter->second;
-        unit->Reparse(pchOps_, EmacsMapper::mapped());
+        unit->Reparse(pchOps_, remappedFiles);
     } else {
         std::vector<const char *> args;
         args.reserve(16);
@@ -608,10 +619,13 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
-
+#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 8)
+        diags->setFatalsAsError(true);
+#endif
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, EmacsMapper::mapped(), false, 0,
+            pchOps_, diags, "", false, true, remappedFiles,
+            false, 0,
             TU_Complete,
             true, true, true, false, true, false,
 
