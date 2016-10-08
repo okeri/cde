@@ -47,8 +47,9 @@ other switches:
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
 (defcustom cde-debug nil "toggle debug buffer")
-(defcustom cde-check 0 "experimental")
-(defcustom cde-disp-delay 0.3 "delay for showing diagnostic info")
+(defcustom cde-check 0 "syntax check delay, MUST be or zero or
+larger than company-idle-delay for comfort usage")
+(defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
 
 ;; internal variables
 (defvar cde--ring '())
@@ -218,10 +219,14 @@ other switches:
 
 (defun cde--check-map()
   (unless cde--buffer-mapped
+    (setq-local cde--buffer-mapped t)
     (cde--send-command (concat "M " buffer-file-name " "
 			       (int-to-string (buffer-size))
-			       "\n" (buffer-string)))
-    (setq-local cde--buffer-mapped t)))
+			       "\n" (buffer-string)))))
+
+(defun cde--unmap()
+  (when cde--buffer-mapped
+    (cde--send-command (concat "M " buffer-file-name "\n"))))
 
 (defun cde--check-handler()
   (when cde-mode
@@ -250,6 +255,8 @@ other switches:
     (cancel-timer cde--check-timer))
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
+  (setq write-file-functions (delete 'cde--unmap write-file-functions))
+
   (remove-hook 'after-change-functions 'cde--change)
   (remove-hook 'company-completion-started-hook 'cde--lock)
   (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
@@ -277,6 +284,7 @@ other switches:
       (set-process-filter cde--process 'cde--handle-output))
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
+    (push 'cde--unmap write-file-functions)
     (add-hook 'after-change-functions 'cde--change)
     (add-hook 'company-completion-started-hook 'cde--lock)
     (add-hook 'company-completion-cancelled-hook 'cde--unlock)

@@ -270,7 +270,6 @@ CDEIndexImpl::~CDEIndexImpl() {
     for (auto &u : units_) {
         delete u.second;
     }
-
 }
 
 
@@ -422,7 +421,7 @@ bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
         return true;
     } else {
         uint32_t tu = getAnyTU(fid);
-        return parse(tu, fid, PF_ALLDIAG | PF_NOTIMECHECK) != nullptr;
+        return parse(tu, fid, PF_ALLDIAG | PF_BUILDMAP | PF_NOTIMECHECK) != nullptr;
     }
 }
 

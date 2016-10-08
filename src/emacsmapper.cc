@@ -30,19 +30,12 @@ EmacsMapper::RemappedFiles &EmacsMapper::mapped() {
 }
 
 void EmacsMapper::map(const std::string &filename, size_t size) {
-    std::string buffer(size, 0);
+    std::string buffer(size + 1, 0);
     if (size) {
         std::cin.read(const_cast<char *>(buffer.c_str()), size);
     }
-    auto &mapped = inst().mapped_;
-    const auto& found = mapped.find(filename);
-    if (found == mapped.end()) {
-        inst().mapped_.emplace(filename, buffer);
-    } else {
-        found->second = buffer;
-    }
+    inst().mapped_[filename] = buffer;
 }
-
 
 void EmacsMapper::unmap(const std::string &filename) {
     inst().mapped_.erase(filename);
