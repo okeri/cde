@@ -38,8 +38,6 @@
 #include "gccsupport.h"
 #include "emacsmapper.h"
 
-// TODO: replace time() with std::chrono::
-
 enum PF_FLAGS {
     PF_NONE = 0x0,
     PF_ERRDIAG = 0x1,
@@ -272,6 +270,7 @@ CDEIndexImpl::~CDEIndexImpl() {
     for (auto &u : units_) {
         delete u.second;
     }
+
 }
 
 
@@ -520,6 +519,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                 }
             }
                 break;
+
             case PreprocessedEntity::EntityKind::InclusionDirectiveKind:
                 if (buildMap) {
                     InclusionDirective *id(cast<InclusionDirective>(it));
@@ -538,6 +538,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                     }
                 }
                 break;
+
             default:
                 break;
         }
@@ -625,8 +626,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles,
-            false, 0,
-            TU_Complete,
+            false, 1, TU_Complete,
             true, true, true, false, true, false,
 
 #if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)

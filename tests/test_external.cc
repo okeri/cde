@@ -19,6 +19,7 @@
 #define BOOST_TEST_MODULE TestExternal
 
 #include <fstream>
+#include <chrono>
 #include <boost/test/unit_test.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -60,11 +61,21 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
                       srcfilename + "\" '((9 10)))\n");
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
     // complete
-    cde.send(std::string("C ") + path + "simple " + srcfilename + " p 6 10\n");
-    BOOST_CHECK_EQUAL(cde.recv(),
-                      "(cde--handle-completions '((\"void pop_back()\" 5 13)"
-                      "(\"void push_back(const value_type &__x)\" 5 14)"
-                      "(\"void push_back(value_type &&__x)\" 5 14)))\n");
+    std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
+    start = std::chrono::system_clock::now();
+    for (unsigned i = 0; i < 10; ++i) {
+        cde.send(std::string("C ") + path + "simple " + srcfilename + " p 6 10\n");
+        BOOST_CHECK_EQUAL(cde.recv(),
+                          "(cde--handle-completions '((\"void pop_back()\" 5 13)"
+                          "(\"void push_back(const value_type &__x)\" 5 14)"
+                          "(\"void push_back(value_type &&__x)\" 5 14)))\n");
+    }
+    end = std::chrono::system_clock::now();
+    unsigned time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end - start).count();
+
+    BOOST_TEST_MESSAGE("complete done in " << time << " ms");
+
     // quit
     cde.send("Q\n");
     BOOST_CHECK_EQUAL(cde.recv(),
@@ -81,9 +92,6 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     ack = std::string("(cde--ack \"") + hdrfilename + "\" \"" + path + "simple\")\n";
     cde.send(std::string("A ") + hdrfilename + "\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
-
-    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
-                      hdrfilename + "\" '((10 11)(21 22)))\n");
 
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
