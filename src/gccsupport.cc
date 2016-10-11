@@ -27,7 +27,6 @@ GccSupport& GccSupport::inst() {
     return instance;
 }
 
-
 void GccSupport::init(const std::string &path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
 
@@ -64,7 +63,6 @@ void GccSupport::init(const std::string &path) {
         std::cout << "(message \"cannot exec " << path << "\")" << std::endl;
     }
 }
-
 
 std::unordered_set<std::string> &GccSupport::includes() {
     return inst().includes_;

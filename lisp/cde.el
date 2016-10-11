@@ -57,8 +57,8 @@ larger than company-idle-delay for comfort usage")
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
 (defvar cde--check-timer nil)
+(defvar cde--lock-guard nil)
 
-(defvar-local cde--lock-guard nil)
 (defvar-local cde--project nil)
 (defvar-local cde--callback nil)
 (defvar-local cde--diags nil)
@@ -230,12 +230,13 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--check-handler()
   (when cde-mode
-    (unless cde--lock-guard
+    (if (not cde--lock-guard)
 	(prog1
 	    (when (timerp cde--check-timer)
 	      (cancel-timer cde--check-timer))
 	  (cde--check-map)
 	  (setq cde--check-timer nil)
+	  (cde--lock t)
 	  (cde--send-command (concat "B " cde--project " "
 				     buffer-file-name "\n")))
       (setq cde--check-timer
@@ -292,10 +293,10 @@ larger than company-idle-delay for comfort usage")
   (cde--send-command (concat "A " buffer-file-name "\n")))
 
 (defun cde--unlock(dummy)
-  (setq-local cde--lock-guard nil))
+  (setq cde--lock-guard nil))
 
 (defun cde--lock(dummy)
-  (setq-local cde--lock-guard t))
+  (setq cde--lock-guard t))
 
 (defun cde--handle-output(process output)
   (let ((doeval nil) (cmds))
@@ -316,7 +317,7 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--send-command(cmd)
   (when cde--process
-    (process-send-string :async cde--process cmd)))
+    (process-send-string cde--process cmd)))
 
 (defun cde--handle-completions(completions-pack)
   (let ((completions '()))
@@ -410,6 +411,7 @@ larger than company-idle-delay for comfort usage")
     (setq-local cde--buffer-mapped t)))
 
 (defun cde--error-rep(&optional errors &optional regulars &optional links)
+  (cde--unlock t)
   (when (> cde-check 0)
     (let ((project cde--project))
       (dolist (buf (buffer-list))
