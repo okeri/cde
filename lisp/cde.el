@@ -230,7 +230,7 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--check-handler()
   (when cde-mode
-    (if (not cde--lock-guard)
+    (unless cde--lock-guard
 	(prog1
 	    (when (timerp cde--check-timer)
 	      (cancel-timer cde--check-timer))
@@ -316,7 +316,7 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--send-command(cmd)
   (when cde--process
-    (process-send-string cde--process cmd)))
+    (process-send-string :async cde--process cmd)))
 
 (defun cde--handle-completions(completions-pack)
   (let ((completions '()))

@@ -30,7 +30,7 @@ EmacsMapper::RemappedFiles &EmacsMapper::mapped() {
 }
 
 void EmacsMapper::map(const std::string &filename, size_t size) {
-    std::string buffer(size + 1, 0);
+    std::string buffer(size, 0);
     if (size) {
         std::cin.read(const_cast<char *>(buffer.c_str()), size);
     }
