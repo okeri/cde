@@ -108,6 +108,7 @@ class CDEIndexImpl : public CDEIndex,
                        const StoredDiagnostic *begin,
                        const StoredDiagnostic *end, uint32_t *errline,
                        uint32_t *errcol);
+
   public:
     CDEIndexImpl(const std::string &projectPath, const std::string &storePath,
                  bool pch);
@@ -524,7 +525,6 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                     InclusionDirective *id(cast<InclusionDirective>(it));
                     const FileEntry *fe = feFromLocation(
                         id->getSourceRange().getBegin());
-
 
                     if (fe == nullptr) {
                         continue;
