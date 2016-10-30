@@ -592,7 +592,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         std::vector<const char *> args;
         args.reserve(16);
 
-#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR == 8)
+#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR >= 8)
         // TODO: why ?
         args.push_back("-Xclang");
 #endif
