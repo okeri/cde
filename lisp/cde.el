@@ -230,17 +230,17 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--check-handler()
   (when cde-mode
+    (when (timerp cde--check-timer)
+      (cancel-timer cde--check-timer))
     (if (not cde--lock-guard)
 	(prog1
-	    (when (timerp cde--check-timer)
-	      (cancel-timer cde--check-timer))
 	  (cde--check-map)
 	  (setq cde--check-timer nil)
 	  (cde--lock t)
 	  (cde--send-command (concat "B " cde--project " "
 				     buffer-file-name "\n")))
       (setq cde--check-timer
-	    (run-at-time cde-check nil #'cde--check-handler)))))
+      	    (run-at-time cde-check nil #'cde--check-handler)))))
 
 (defun cde--change (start end len)
   (setq-local cde--buffer-mapped nil)
@@ -347,11 +347,14 @@ larger than company-idle-delay for comfort usage")
     (funcall callback '())))
 
 (defun cde--prefix()
-  (cde--check-map)
-  (if (not (company-in-string-or-comment))
-      (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
-	    (if bounds (buffer-substring-no-properties
-			(car bounds) (cdr bounds)) "")) "")))
+  (if (not cde--lock-guard)
+      (progn
+	(cde--check-map)
+	(if (not (company-in-string-or-comment))
+	    (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
+		  (if bounds (buffer-substring-no-properties
+			      (car bounds) (cdr bounds)) "")) "")))
+    'stop))
 
 (defun cde--line-to-pt(line)
   (save-excursion
