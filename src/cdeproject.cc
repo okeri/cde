@@ -129,7 +129,7 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
         std::cout << index_->fileName(def.file)
              << "\")(goto-char (point-min))(forward-char " << def.pos
              << ")(push (list \"" << filename
-             << "\" " << pos << ") cde--ring)" << std::endl;
+             << "\" " << pos << ") cde--ring)(dframe-message \"\")" << std::endl;
     } else {
         std::cout << "(dframe-message \"No definition found\")" << std::endl;
     }
@@ -178,7 +178,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
                                                               r.first.pos))
                       << ") ";
         }
-        std::cout << "))" << std::endl;
+        std::cout << "))(dframe-message \"\")" << std::endl;
     }
 }
 
