@@ -180,7 +180,9 @@ larger than company-idle-delay for comfort usage")
 			 (insert anno)
 			 (company-template-c-like-templatify
 			  (concat arg anno)))))
-    (sorted t)))
+    (sorted t)
+    (no-cache t)
+    (ignore-case t)))
 
 ;; private functions
 (defun cde--sympos()
@@ -328,24 +330,26 @@ larger than company-idle-delay for comfort usage")
 							   (nth 2 comp)
 							   (nth 3 comp))
 					  'meta (nth 0 comp))))))
-  (funcall cde--callback cde--completion-list))
+  (cde--filter))
+
+(defun cde--filter()
+  (let ((prefix (company-grab-symbol))
+	(completions '()))
+    (dolist (completion cde--completion-list)
+      (when (string-prefix-p prefix completion)
+	(setq completions (nconc completions (list completion)))))
+    (funcall cde--callback completions)))
 
 (defun cde--candidates(callback)
-  (let ((pos (or (cde--sympos) (point)))
-  	(prefix (company-grab-symbol)))
+  (setq-local cde--callback callback)
+  (let ((pos (or (cde--sympos) (point))))
     (if (and (boundp 'cde--start) (eq pos cde--start))
-  	(let ((completions '()))
-  	  (dolist (completion cde--completion-list)
-  	    (when (string-prefix-p prefix completion)
-  	      (setq completions (nconc completions (list completion)))))
-  	  (funcall callback completions))
+	(cde--filter)
       (progn
-  	(setq-local cde--callback callback)
   	(setq-local cde--start pos)
   	(cde--check-map)
   	(cde--send-command (concat "C " cde--project " "
   				   buffer-file-name " "
-  				   prefix " "
   				   (int-to-string (line-number-at-pos pos)) " "
   				   (int-to-string
   				    (save-excursion (goto-char pos)
@@ -407,6 +411,9 @@ larger than company-idle-delay for comfort usage")
   (with-current-buffer (get-file-buffer file)
     (setq-local cde--project project)
     (setq-local cde--buffer-mapped t)))
+
+;; TODO: in case we are reparsing header owned by multiple TU's we are loosing
+;; messages from non-reparsed TU's (. need fix it
 
 (defun cde--error-rep(&optional errors &optional regulars &optional links)
   (cde--unlock t)
