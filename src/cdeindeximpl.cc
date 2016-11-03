@@ -598,6 +598,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
 #endif
         args.push_back("-Xclang");
         args.push_back("-detailed-preprocessing-record");
+        args.push_back("-fsyntax-only");
         copyArgsToClangArgs(tu, &args);
 
         // We are not sure about language, so appending gcc c++ system include

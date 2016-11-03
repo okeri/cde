@@ -119,7 +119,8 @@ void CDEProject::updateProjectFile(const std::string &filename) {
 
 void CDEProject::definition(const std::string &filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
-    index_->parse(ref.file, true);
+    std::cout << "(dframe-message \"Reparsing units...\")" << std::endl;
+    index_->parse(ref.file, false);
 
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -138,6 +139,7 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
 void CDEProject::references(const std::string &filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
+    std::cout << "(dframe-message \"Reparsing units...\")" << std::endl;
     index_->parse(file, true);
 
     std::map<CI_KEY, uint32_t> results;
