@@ -64,6 +64,8 @@ larger than company-idle-delay for comfort usage")
 (defvar-local cde--diags nil)
 (defvar-local cde--last-line nil)
 (defvar-local cde--buffer-mapped nil)
+(defvar-local cde--start nil)
+(defvar-local cde--completion-list nil)
 
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
@@ -154,13 +156,6 @@ larger than company-idle-delay for comfort usage")
       (setq compile-command (car compile-history)))
   (execute-extended-command nil "compile"))
 
-;;; temporary
-(defun sent(process event)
-  (message-box "!!!Process quit!!!")
-  (setq cde--process nil))
-
-;; TODO: need to test this to ensure child process
-;; will not forced to terminate
 (defun cde-quit()
   (when cde--process
       (process-send-string cde--process "Q\n"))
@@ -173,7 +168,9 @@ larger than company-idle-delay for comfort usage")
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-cde))
-    (prefix (and cde-mode (cons (cde--prefix) t)))
+    (prefix (and cde-mode cde--project
+		 (not (company-in-string-or-comment))
+		 (company-grab-symbol)))
     (candidates (cons :async
 		      'cde--candidates))
     (annotation (get-text-property 0 'anno arg))
@@ -320,41 +317,39 @@ larger than company-idle-delay for comfort usage")
     (process-send-string cde--process cmd)))
 
 (defun cde--handle-completions(completions-pack)
-  (let ((completions '()))
+  (setq cde--completion-list nil)
   (dolist (comp completions-pack)
-    (setq completions (append completions
-			      (list (propertize (substring (nth 0 comp)
-							   (nth 1 comp)
-							   (nth 2 comp))
-						'anno (substring (nth 0 comp)
-								 (nth 2 comp)
-								 (nth 3 comp))
-						'meta (nth 0 comp))))))
-  (funcall cde--callback completions)))
+    (setq-local cde--completion-list
+		(nconc cde--completion-list
+			(list (propertize (substring (nth 0 comp)
+						     (nth 1 comp)
+						     (nth 2 comp))
+					  'anno (substring (nth 0 comp)
+							   (nth 2 comp)
+							   (nth 3 comp))
+					  'meta (nth 0 comp))))))
+  (funcall cde--callback cde--completion-list))
 
 (defun cde--candidates(callback)
-  (setq-local cde--callback callback)
-  (if cde--project
-      (let ((pos (or (cde--sympos) (point))))
-	(cde--check-map)
-	(cde--send-command (concat "C " cde--project " "
-				   buffer-file-name " "
-				   (cde--prefix) " "
-				   (int-to-string (line-number-at-pos pos)) " "
-				   (int-to-string
-				    (save-excursion (goto-char pos)
-						    (current-column))) "\n")))
-    (funcall callback '())))
-
-(defun cde--prefix()
-  (if (not cde--lock-guard)
+  (let ((pos (or (cde--sympos) (point)))
+  	(prefix (company-grab-symbol)))
+    (if (and (boundp 'cde--start) (eq pos cde--start))
+  	(let ((completions '()))
+  	  (dolist (completion cde--completion-list)
+  	    (when (string-prefix-p prefix completion)
+  	      (setq completions (nconc completions (list completion)))))
+  	  (funcall callback completions))
       (progn
-	(cde--check-map)
-	(if (not (company-in-string-or-comment))
-	    (or (let ((bounds (bounds-of-thing-at-point 'symbol)))
-		  (if bounds (buffer-substring-no-properties
-			      (car bounds) (cdr bounds)) "")) "")))
-    'stop))
+  	(setq-local cde--callback callback)
+  	(setq-local cde--start pos)
+  	(cde--check-map)
+  	(cde--send-command (concat "C " cde--project " "
+  				   buffer-file-name " "
+  				   prefix " "
+  				   (int-to-string (line-number-at-pos pos)) " "
+  				   (int-to-string
+  				    (save-excursion (goto-char pos)
+  						    (current-column))) "\n"))))))
 
 (defun cde--line-to-pt(line)
   (save-excursion
