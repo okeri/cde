@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
     }
 
     fileutil::deleteTrailingSep(&path);
+    fileutil::mkdir(path);
 
     CDE cde(path, nocache, pch);
     std::string command, last;

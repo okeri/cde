@@ -278,7 +278,7 @@ larger than company-idle-delay for comfort usage")
     (let ((process-connection-type nil)
           (process-adaptive-read-buffering nil))
       (setq cde--process
-	    (apply 'start-process (append (list cde--process-name
+	    (apply 'start-process (nconc (list cde--process-name
 						cde--process-buffer)
 					  (split-string cde-command))))
 
