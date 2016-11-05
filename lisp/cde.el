@@ -288,7 +288,6 @@ larger than company-idle-delay for comfort usage")
 
       (buffer-disable-undo cde--process-buffer)
       (set-process-query-on-exit-flag cde--process nil)
-      (set-process-sentinel cde--process 'sent)
       (set-process-filter cde--process 'cde--handle-output))
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
