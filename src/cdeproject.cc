@@ -272,7 +272,7 @@ void CDEProject::scanProject() {
     std::forward_list<std::string> files;
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it : files) {
-        std::cout << "(message \"parsing " << it << " sz: " << index_->records_.size() << "\")" << std::endl;
+        std::cout << "(message \"parsing " << it << "\")" << std::endl;
         index_->parse(index_->getFile(it), CDEIndex::ParseOptions::Forget);
     }
     std::cout << "(message \"Done!\")" << std::endl;
