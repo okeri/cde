@@ -119,7 +119,7 @@ void CDEProject::updateProjectFile(const std::string &filename) {
 
 void CDEProject::definition(const std::string &filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
-    std::cout << "(dframe-message \"Reparsing units...\")" << std::endl;
+    std::cout << "(message \"Searching...\")" << std::endl;
     index_->parse(ref.file, false);
 
     const auto& defIt = index_->records_.find(ref);
@@ -129,9 +129,9 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
         std::cout << index_->fileName(def.file)
              << "\")(goto-char (point-min))(forward-char " << def.pos
              << ")(push (list \"" << filename
-             << "\" " << pos << ") cde--ring)(dframe-message \"\")" << std::endl;
+             << "\" " << pos << ") cde--ring)(message \"\")" << std::endl;
     } else {
-        std::cout << "(dframe-message \"No definition found\")" << std::endl;
+        std::cout << "(message \"No definition found\")" << std::endl;
     }
 }
 
@@ -139,7 +139,7 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
 void CDEProject::references(const std::string &filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
-    std::cout << "(dframe-message \"Reparsing units...\")" << std::endl;
+    std::cout << "(message \"Searching...\")" << std::endl;
     index_->parse(file, true);
 
     std::map<CI_KEY, uint32_t> results;
@@ -178,7 +178,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
                                                               r.first.pos))
                       << ") ";
         }
-        std::cout << "))(dframe-message \"\")" << std::endl;
+        std::cout << "))(message \"\")" << std::endl;
     }
 }
 
@@ -277,10 +277,10 @@ void CDEProject::scanProject() {
     std::forward_list<std::string> files;
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it : files) {
-        std::cout << "(dframe-message \"parsing " << it << "\")" << std::endl;
+        std::cout << "(message \"parsing " << it << "\")" << std::endl;
         updateProjectFile(it);
     }
-    std::cout << "(dframe-message \"Done!\")" << std::endl;
+    std::cout << "(message \"Done!\")" << std::endl;
 }
 
 void CDEProject::check(const std::string &filename) {

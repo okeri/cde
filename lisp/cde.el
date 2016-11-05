@@ -135,7 +135,7 @@ larger than company-idle-delay for comfort usage")
 	      (goto-char (point-min))
 	      (forward-char (nth 1 pos))
 	      (setq cde--ring (cdr cde--ring)))
-      (dframe-message "Jump history is empty"))))
+      (message "Jump history is empty"))))
 
 (defun cde-compile()
   "Suggest to compile of project directory"
