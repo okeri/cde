@@ -22,7 +22,7 @@ emacs with company-mode installed.
 
 Known issues:
 
-1. Segfaults)))
-2. hideif overlays not updated after ifdef change
+1. In some cases unwanted clearing of highlighting errors
+2. Some multiple open projects issues
 
 No releases so far, project is in early development stage.
