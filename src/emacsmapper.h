@@ -19,15 +19,14 @@
 #pragma once
 
 #include <map>
+#include "single.h"
 
-class EmacsMapper {
+class EmacsMapper : public Single {
     typedef std::map<std::string, std::string> RemappedFiles;
-    EmacsMapper() = default;
-    EmacsMapper(const EmacsMapper&) = delete;
-    EmacsMapper& operator=(const EmacsMapper &) = delete;
+
+    RemappedFiles mapped_;
 
     static EmacsMapper& inst();
-    RemappedFiles mapped_;
 
   public:
     static RemappedFiles &mapped();

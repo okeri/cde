@@ -18,16 +18,11 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_set>
-#include "single.h"
+class Single {
+    Single(const Single&) = delete;
+    Single(Single&&) = delete;
+    Single& operator=(const Single &) = delete;
 
-class GccSupport : public Single {
-    std::unordered_set<std::string> includes_;
-
-    static GccSupport& inst();
-
-  public:
-    static void init(const std::string &path);
-    static std::unordered_set<std::string> &includes();
+  protected:
+    Single() = default;
 };

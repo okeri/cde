@@ -71,7 +71,6 @@ larger than company-idle-delay for comfort usage")
 (defconst cde--process-name "cde-process")
 (defconst cde--include-re "^\#*\\s *include\\s +[<\"]\\(.*\\)[>\"]")
 
-
 ;; public functions
 (defun cde-update-project()
   (interactive)
@@ -181,8 +180,7 @@ larger than company-idle-delay for comfort usage")
 			 (company-template-c-like-templatify
 			  (concat arg anno)))))
     (sorted t)
-    (no-cache t)
-    (ignore-case t)))
+    (no-cache t)))
 
 ;; private functions
 (defun cde--sympos()
@@ -206,6 +204,7 @@ larger than company-idle-delay for comfort usage")
 
     (with-current-buffer refbuf
       (setq-local buffer-read-only nil)
+      (cde-ref-mode)
       (erase-buffer)
       (dolist (item items)
 	(if (listp item)
@@ -213,8 +212,17 @@ larger than company-idle-delay for comfort usage")
 		    (nth 1 item) "\n")
 	  (insert (propertize item 'face 'font-lock-type-face) "\n")))
       (setq-local buffer-read-only t)
-      (goto-char (point-min))
-      (local-set-key (kbd "RET") 'cde-ref-jmp))))
+      (goto-char (point-min)))))
+
+
+(defvar cde-ref-mode-map
+  (let ((map (make-keymap)))
+    (define-key map (kbd "RET") 'cde-ref-jmp) map)
+  "Keymap for cde-ref mode")
+
+(define-derived-mode cde-ref-mode nil "cde references"
+  "Major mode for cde references navigation\\{cde-ref-mode-map}")
+
 
 (defun cde--check-map()
   (unless cde--buffer-mapped
