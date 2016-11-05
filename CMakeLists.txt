@@ -17,17 +17,19 @@ find_package(Clang REQUIRED)
 
 include_directories(SYSTEM "src" ${BDB_INCLUDE_DIR} ${CLANG_INCLUDE_DIR})
 
-add_library(fileutil src/fileutil.cc)
-add_executable(cde
-  src/main.cc
-  src/cdeproject.cc
-  src/cdeindeximpl.cc
-  src/emacsmapper.cc
-  src/gccsupport.cc)
+#add_library(fileutil src/fileutil.cc)
+add_library(cde SHARED
+  # src/cdeproject.cc
+  # src/cdeindeximpl.cc
+  # src/emacsmapper.cc
+  # src/gccsupport.cc
+  src/emacs.cc
+  src/module.cc)
 
+#set_property(TARGET fileutil PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -fno-exceptions -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti -fPIC")
 set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -fno-exceptions -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti")
-
-target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} fileutil)
+target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES})
+  #fileutil)
 
 if (INCLUDE_TESTS)
   enable_testing()
