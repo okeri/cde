@@ -96,6 +96,8 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
+                      hdrfilename + "\" '((10 11)(21 22)))\n");
 
     // hdr/src.
     cde.send(std::string("F ") + path + "simple " + hdrfilename + "\n");
@@ -103,12 +105,14 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     // def
     cde.send(std::string("D ") + path + "simple " + srcfilename + " 148\n");
+    cde.recv(); // skip searchig
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(find-file \"") + hdrfilename +
                       "\")(goto-char (point-min))(forward-char 390)(push "
                       "(list \"" + srcfilename + "\" 147) cde--ring)\n");
 
     // ref
     cde.send(std::string("R ") + path + "simple " + hdrfilename +  " 391\n");
+    cde.recv(); // skip searchig
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--ref-setup '(\"") +
                       srcfilename + "\" (7 \"array[0].run1(42);\") ))\n");
 
