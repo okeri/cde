@@ -135,9 +135,8 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'U':
-                    if (count > 1) {
-                        cde.update(commands[1], (count > 2) ?
-                                   commands[2] : "");
+                    if (count == 2) {
+                        cde.update(commands[1]);
                     }
                     break;
 

@@ -34,7 +34,8 @@ void EmacsMapper::map(const std::string &filename, size_t size) {
     if (size) {
         std::cin.read(const_cast<char *>(buffer.c_str()), size);
     }
-    inst().mapped_[filename] = buffer;
+    inst().mapped_[filename] = std::make_pair(
+        buffer, static_cast<uint32_t>(time(NULL)));
 }
 
 void EmacsMapper::unmap(const std::string &filename) {

@@ -37,7 +37,6 @@ class CDEProject {
     bool fileInProject(const std::string &filename) const;
     void scanProject();
     void check(const std::string &filename);
-    void updateProjectFile(const std::string &filename);
     void definition(const std::string &filename, uint32_t pos);
     void references(const std::string &filename, uint32_t pos);
     void findfile(const std::string &filename, const std::string &parent);

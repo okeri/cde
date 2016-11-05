@@ -63,13 +63,8 @@ class CDE {
             : storePath_(store), nocache_(nocache) ,pch_(pch) {
     }
 
-    inline void update(const std::string &projectpath,
-                       const std::string &filename) {
-        if (filename != "") {
-            getProject(projectpath).updateProjectFile(filename);
-        } else {
-            getProject(projectpath).scanProject();
-        }
+    inline void update(const std::string &projectpath) {
+        getProject(projectpath).scanProject();
     }
 
     inline void check(const std::string &projectpath,

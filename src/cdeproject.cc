@@ -112,15 +112,10 @@ std::string CDEProject::findProjectRoot(const std::string &projectPath) {
 }
 
 
-void CDEProject::updateProjectFile(const std::string &filename) {
-    index_->parse(index_->getFile(filename), true);
-}
-
-
 void CDEProject::definition(const std::string &filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
     std::cout << "(message \"Searching...\")" << std::endl;
-    index_->parse(ref.file, false);
+    index_->parse(ref.file, CDEIndex::ParseOptions::Normal);
 
     const auto& defIt = index_->records_.find(ref);
     if (defIt != index_->records_.end()) {
@@ -140,7 +135,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
     std::cout << "(message \"Searching...\")" << std::endl;
-    index_->parse(file, true);
+    index_->parse(file, CDEIndex::ParseOptions::Recursive);
 
     std::map<CI_KEY, uint32_t> results;
     for (const auto& r : index_->records_) {
@@ -277,14 +272,14 @@ void CDEProject::scanProject() {
     std::forward_list<std::string> files;
     fileutil::collectFiles(index_->projectPath(), &files);
     for (const auto& it : files) {
-        std::cout << "(message \"parsing " << it << "\")" << std::endl;
-        updateProjectFile(it);
+        std::cout << "(message \"parsing " << it << " sz: " << index_->records_.size() << "\")" << std::endl;
+        index_->parse(index_->getFile(it), CDEIndex::ParseOptions::Forget);
     }
     std::cout << "(message \"Done!\")" << std::endl;
 }
 
 void CDEProject::check(const std::string &filename) {
-    index_->parse(index_->getFile(filename), false);
+    index_->parse(index_->getFile(filename), CDEIndex::ParseOptions::Force);
 }
 
 void CDEProject::completion(const std::string &filename,

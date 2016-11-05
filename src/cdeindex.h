@@ -224,13 +224,19 @@ class CDEIndex {
 
   public:
 
+    enum class ParseOptions {
+        Normal,
+        Forget,
+        Force,
+        Recursive
+    };
     // assume some average project has 512 < files < 1024.
-    enum { MININDEXALLOC = 0x400 };
+    enum { MinIndexAlloc = 0x400 };
 
     CDEIndex(const std::string &projectPath, const std::string& storePath)
             : storePath_(storePath) {
         std::string projPath = projectPath;
-        files_.reserve(MININDEXALLOC);
+        files_.reserve(MinIndexAlloc);
         push(0, projPath);
     }
 
@@ -243,8 +249,8 @@ class CDEIndex {
     }
 
     void push(uint32_t id, const std::string &path,
-                            uint32_t time = 0, uint32_t parentCount = 0,
-                            uint32_t *parents = nullptr) {
+              uint32_t time = 0, uint32_t parentCount = 0,
+              uint32_t *parents = nullptr) {
         files_.emplace_back(id, path, time, parentCount, parents);
         SourceInfo *ret = &files_[files_.size() - 1];
         hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
@@ -265,26 +271,26 @@ class CDEIndex {
         return INVALID;
     }
 
-    enum { ROOTID = 0 };
+    enum { RootId = 0 };
 
     /** get translation unit for current file*/
     uint32_t getAnyTU(uint32_t file) {
         uint32_t token = file;
         while (files_[token].parents_.size() > 0 &&
-               files_[token].parents_[0] != ROOTID) {
+               files_[token].parents_[0] != RootId) {
             token = files_[token].parents_[0];
         }
         return token;
     }
 
-    enum { MINPARENTNODEALLOC = 0x100 };
+    enum { MinParentNodeAlloc = 0x100 };
 
     /** get all translation units for current file*/
     const std::unordered_set<uint32_t> getAllTUs(uint32_t file) {
         std::unordered_set<uint32_t> result;
         std::vector<uint32_t> nodes;
         unsigned curNode;
-        nodes.reserve(MINPARENTNODEALLOC);
+        nodes.reserve(MinParentNodeAlloc);
         nodes.push_back(files_[file].fileId_);
 
         for (curNode = 0; curNode < nodes.size(); ++curNode) {
@@ -296,7 +302,7 @@ class CDEIndex {
                     nodes.push_back(*it);
                 }
                 if (token->parents_.size() == 1 &&
-                    token->parents_[0] == ROOTID) {
+                    token->parents_[0] == RootId) {
                     result.insert(token->fileId_);
                 }
             }
@@ -305,7 +311,7 @@ class CDEIndex {
     }
 
     /** get a file from index, or add it if files is not present in index*/
-    uint32_t getFile(const std::string &filename, uint32_t parent = ROOTID) {
+    uint32_t getFile(const std::string &filename, uint32_t parent = RootId) {
         SourceInfo *found = find(filename);
         if (found != nullptr) {
             return found->fileId_;
@@ -323,7 +329,7 @@ class CDEIndex {
         if (std::find(parents.begin(), end, pid) == end) {
             // remove wrong TU's if they have another dependencies
             if (parents.size() == 1 &&
-                parents[0] == ROOTID) {
+                parents[0] == RootId) {
                 parents.resize(0);
             }
             parents.push_back(pid);
@@ -338,11 +344,11 @@ class CDEIndex {
     }
 
     inline const std::string& projectPath() {
-        return files_[ROOTID].filename_;
+        return files_[RootId].filename_;
     }
 
     inline void setGlobalArgs(const std::string &args) {
-        files_[ROOTID].setArgs(args);
+        files_[RootId].setArgs(args);
     }
 
     void fillIncludes(uint32_t file,
@@ -355,7 +361,7 @@ class CDEIndex {
         }
     }
 
-    virtual bool parse(uint32_t fid, bool recursive) = 0;
+    virtual bool parse(uint32_t fid, ParseOptions options) = 0;
     virtual void preprocess(uint32_t fid) = 0;
     virtual void loadPCHData() = 0;
     virtual void completion(uint32_t fid, const std::string &prefix,

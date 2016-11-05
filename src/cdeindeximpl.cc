@@ -43,9 +43,10 @@ enum PF_FLAGS {
     PF_ERRDIAG = 0x1,
     PF_ALLDIAG = 0x2,
     PF_ANYDIAG = 0x3,
-    PF_BUILDMAP = 0x4,
-    PF_NOTIMECHECK = 0x8
+    PF_FORCEDIAG = 0x4,
+    PF_FORGET = 0x8
 };
+
 
 constexpr PF_FLAGS operator | (PF_FLAGS a, PF_FLAGS b) {
     return PF_FLAGS(unsigned(a) | unsigned(b));
@@ -112,7 +113,7 @@ class CDEIndexImpl : public CDEIndex,
   public:
     CDEIndexImpl(const std::string &projectPath, const std::string &storePath,
                  bool pch);
-    bool parse(uint32_t fid, bool recursive);
+    bool parse(uint32_t fid, ParseOptions options);
     void completion(uint32_t fid, const std::string &prefix,
                     uint32_t line, uint32_t column);
     void preprocess(uint32_t fid);
@@ -404,25 +405,58 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
         if (parsed != nullptr) {
             *parsed = true;
         }
-        return parse(tu, fid, PF_BUILDMAP | PF_NOTIMECHECK |
-                     (all ? PF_ALLDIAG : PF_ERRDIAG));
+        return parse(tu, fid, all ? PF_ALLDIAG : PF_ERRDIAG);
     }
     return nullptr;
 }
 
 
-bool CDEIndexImpl::parse(uint32_t fid, bool recursive) {
-    if (recursive) {
+bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
+    if (options != ParseOptions::Recursive) {
+        uint32_t tu = getAnyTU(fid);
+        ASTUnit *unit = nullptr;
+
+        const auto &unitIter = units_.find(tu);
+        if (unitIter != units_.end()) {
+            unit = unitIter->second;
+        }
+
+        bool result = true;
+
+        if (unit != nullptr) {
+            uint32_t time = find(tu)->time();
+            const auto &mapped = EmacsMapper::mapped().find(find(fid)->fileName());
+            if ((mapped != EmacsMapper::mapped().end() && time < mapped->second.second)
+                || (time < fileutil::fileTime(fileName(tu)))) {
+                unit == nullptr;
+            }
+        }
+
+        if (unit == nullptr) {
+            unit = parse(tu, fid, PF_ALLDIAG |
+                         (options == ParseOptions::Forget ?
+                          PF_FORGET : PF_NONE));
+
+            result = unit != nullptr;
+
+            if (options == ParseOptions::Forget) {
+                delete units_[tu];
+                units_.erase(tu);
+            }
+        } else if (options == ParseOptions::Force) {
+            handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
+                              unit->stored_diag_end(), false);
+        }
+        return result;
+
+    } else {
         std::unordered_set<uint32_t> tus = getAllTUs(fid);
         for (auto it : tus) {
-            if (!parse(it, fid, PF_BUILDMAP | PF_ALLDIAG)) {
+            if (!parse(it, ParseOptions::Normal)) {
                 return false;
             }
         }
         return true;
-    } else {
-        uint32_t tu = getAnyTU(fid);
-        return parse(tu, fid, PF_ALLDIAG | PF_BUILDMAP | PF_NOTIMECHECK) != nullptr;
     }
 }
 
@@ -458,7 +492,8 @@ void CDEIndexImpl::completion(uint32_t fid,
     SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
     for (const auto &file : EmacsMapper::mapped()) {
         std::unique_ptr<llvm::MemoryBuffer> mb =
-                llvm::MemoryBuffer::getMemBufferCopy(file.second, file.first);
+                llvm::MemoryBuffer::getMemBufferCopy(file.second.first,
+                                                     file.first);
         remappedFiles.emplace_back(file.first, mb.release());
     }
     unit->CodeComplete(filename, line, column, remappedFiles,
@@ -569,18 +604,14 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
 }
 
 ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
-    if (!(flags & PF_NOTIMECHECK) &&
-        find(tu)->time() > fileutil::fileTime(fileName(tu))) {
-        return nullptr;
-    }
-
     std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
     SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
     for (const auto &file : EmacsMapper::mapped()) {
         std::unique_ptr<llvm::MemoryBuffer> mb =
-                llvm::MemoryBuffer::getMemBufferCopy(file.second, file.first);
+                llvm::MemoryBuffer::getMemBufferCopy(file.second.first,
+                                                     file.first);
         remappedFiles.emplace_back(file.first, mb.release());
     }
 
@@ -626,7 +657,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles,
-            false, 1, TU_Complete,
+            false, flags & PF_FORGET ? 0 : 1, TU_Complete,
             true, true, true, false, true, false,
 
 #if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
@@ -642,7 +673,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
 
     sm_ = &unit->getSourceManager();
 
-    preprocessTUforFile(unit, au, flags & PF_BUILDMAP);
+    preprocessTUforFile(unit, au, true);
 
     if (flags & PF_ANYDIAG) {
         handleDiagnostics(fileName(tu), unit->stored_diag_begin(),

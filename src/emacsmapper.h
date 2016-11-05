@@ -22,7 +22,7 @@
 #include "single.h"
 
 class EmacsMapper : public Single {
-    typedef std::map<std::string, std::string> RemappedFiles;
+    using RemappedFiles = std::map<std::string, std::pair<std::string, uint32_t>>;
 
     RemappedFiles mapped_;
 
