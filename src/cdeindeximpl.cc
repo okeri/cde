@@ -414,45 +414,42 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
 bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
     if (options != ParseOptions::Recursive) {
         uint32_t tu = getAnyTU(fid);
-        ASTUnit *unit = nullptr;
 
+        bool outdated = false;
+        uint32_t time = find(tu)->time();
+        const auto &mapped = EmacsMapper::mapped().find(find(fid)->fileName());
+        if ((mapped != EmacsMapper::mapped().end() && time <
+             mapped->second.second) ||
+            (time < fileutil::fileTime(fileName(tu)))) {
+            outdated = true;
+        }
+
+        ASTUnit *unit(nullptr);
         const auto &unitIter = units_.find(tu);
         if (unitIter != units_.end()) {
             unit = unitIter->second;
         }
 
         bool result = true;
-
-        if (unit != nullptr) {
-            uint32_t time = find(tu)->time();
-            const auto &mapped = EmacsMapper::mapped().find(find(fid)->fileName());
-            if ((mapped != EmacsMapper::mapped().end() && time < mapped->second.second)
-                || (time < fileutil::fileTime(fileName(tu)))) {
-                unit == nullptr;
-            }
-        }
-
-        if (unit == nullptr) {
+        if (outdated || (unit == nullptr && options == ParseOptions::Force)) {
             unit = parse(tu, fid, PF_ALLDIAG |
                          (options == ParseOptions::Forget ?
                           PF_FORGET : PF_NONE));
 
             result = unit != nullptr;
-
-            if (options == ParseOptions::Forget) {
+            if (result && options == ParseOptions::Forget) {
                 delete units_[tu];
                 units_.erase(tu);
             }
-        } else if (options == ParseOptions::Force) {
+        } else if (unit != nullptr && options == ParseOptions::Force) {
             handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
                               unit->stored_diag_end(), false);
         }
         return result;
-
     } else {
         std::unordered_set<uint32_t> tus = getAllTUs(fid);
         for (auto it : tus) {
-            if (!parse(it, ParseOptions::Normal)) {
+            if (!parse(it, ParseOptions::Forget)) {
                 return false;
             }
         }
