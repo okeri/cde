@@ -415,14 +415,13 @@ bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
     if (options != ParseOptions::Recursive) {
         uint32_t tu = getAnyTU(fid);
 
-        bool outdated = false;
-        uint32_t time = find(tu)->time();
+        uint32_t actual = 0;
         const auto &mapped = EmacsMapper::mapped().find(find(fid)->fileName());
-        if ((mapped != EmacsMapper::mapped().end() && time <
-             mapped->second.second) ||
-            (time < fileutil::fileTime(fileName(tu)))) {
-            outdated = true;
+        if (mapped != EmacsMapper::mapped().end()) {
+            actual = mapped->second.second;
         }
+        actual = std::max(actual, (fileutil::fileTime(fileName(tu))));
+        bool outdated = find(tu)->time() < actual;
 
         ASTUnit *unit(nullptr);
         const auto &unitIter = units_.find(tu);
