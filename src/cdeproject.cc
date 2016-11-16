@@ -19,6 +19,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include "rapidjson/document.h"
 #include "fileutil.h"
 #include "cdeproject.h"
 
@@ -92,11 +93,73 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
         std::string content((std::istreambuf_iterator<char>(f)),
                             std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
+    } else {
+        f.open(projectPath + SEPARATOR + PRJ_CCJ);
+        if (f) {
+            std::string content((std::istreambuf_iterator<char>(f)),
+                                std::istreambuf_iterator<char>());
+            rapidjson::Document root;
+            root.Parse(content.c_str());
+            if (root.IsArray()) {
+                for (auto it = root.Begin(); it != root.End(); ++it) {
+                    if (it->IsObject()) {
+                        auto directory = it->FindMember("directory");
+                        if (directory == it->MemberEnd()) {
+                            continue;
+                        }
+
+                        auto command = it->FindMember("command");
+                        if (command == it->MemberEnd()) {
+                            continue;
+                        }
+
+                        auto file = it->FindMember("file");
+                        if (file == it->MemberEnd()) {
+                            continue;
+                        }
+
+                        std::string filename = file->value.GetString();
+                        if (filename.empty()) {
+                            continue;
+                        }
+
+                        if (filename[0] != '/') {
+                            std::string dirname(directory->value.GetString());
+                            fileutil::addTrailingSep(&dirname);
+                            filename = fileutil::purify(dirname + filename);
+                        }
+
+                        std::vector<std::string> args;
+                        std::vector<std::string> ignores{"-c", "-o"};
+                        bool ignoreNext = true;  // skip just first
+                        strBreak(command->value.GetString(),
+                                 [&args, &ignores, & ignoreNext]
+                                 (const char* head, size_t len) {
+                                     if (!ignoreNext) {
+                                         std::string arg(head, len);
+                                         if (find(ignores.begin(),
+                                                  ignores.end(), arg) !=
+                                             ignores.end()) {
+                                             args.emplace_back(arg);
+                                         } else {
+                                             ignoreNext = true;
+                                         }
+                                     } else {
+                                         ignoreNext = false;
+                                     }
+                                     return true;
+                                 });
+
+                        index_->setUnitWithArgs(filename, args);
+                    }
+                }
+            }
+        }
     }
+
     if (pch) {
         index_->loadPCHData();
     }
-    // TODO: implement compile_commands.json handling
 }
 
 

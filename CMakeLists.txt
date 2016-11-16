@@ -15,7 +15,7 @@ add_definitions(-D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D
 find_package(BDB REQUIRED)
 find_package(Clang REQUIRED)
 
-include_directories(SYSTEM "src" ${BDB_INCLUDE_DIR} ${CLANG_INCLUDE_DIR})
+include_directories(SYSTEM "src" "src/rapidjson/include" ${BDB_INCLUDE_DIR} ${CLANG_INCLUDE_DIR})
 
 add_library(fileutil src/fileutil.cc)
 add_executable(cde
