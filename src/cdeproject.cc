@@ -133,12 +133,12 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                         std::vector<std::string> ignores{"-c", "-o"};
                         bool ignoreNext = true;  // skip just first
                         strBreak(command->value.GetString(),
-                                 [&args, &ignores, & ignoreNext]
+                                 [&args, &ignores, &ignoreNext]
                                  (const char* head, size_t len) {
                                      if (!ignoreNext) {
                                          std::string arg(head, len);
                                          if (find(ignores.begin(),
-                                                  ignores.end(), arg) !=
+                                                  ignores.end(), arg) ==
                                              ignores.end()) {
                                              args.emplace_back(arg);
                                          } else {

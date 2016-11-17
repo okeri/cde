@@ -134,10 +134,6 @@ class SourceInfo {
         return filename_;
     }
 
-    inline void setArgs(const std::vector<std::string> &args) {
-        args_ = std::move(args);
-    }
-
     inline void setArgs(const std::string& args) {
         args_.resize(0);
         strBreak(args, [this] (const char* head, size_t len) {
@@ -343,8 +339,7 @@ class CDEIndex {
 
     void setUnitWithArgs(const std::string &filename,
                          const std::vector<std::string> &args) {
-        auto info = find(getFile(filename));
-        info->setArgs(args);
+        find(getFile(filename))->args_ = std::move(args);
     }
 
     inline const char *fileName(uint32_t fid) {
