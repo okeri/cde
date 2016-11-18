@@ -43,16 +43,70 @@ enum PF_FLAGS {
     PF_ERRDIAG = 0x1,
     PF_ALLDIAG = 0x2,
     PF_ANYDIAG = 0x3,
-    PF_FORCEDIAG = 0x4,
     PF_FORGET = 0x8
 };
-
 
 constexpr PF_FLAGS operator | (PF_FLAGS a, PF_FLAGS b) {
     return PF_FLAGS(unsigned(a) | unsigned(b));
 }
 
 using namespace clang;
+
+namespace {
+
+const char *getClangIncludeArg() {
+    static std::string clangInc("-I");
+    if (clangInc == "-I") {
+        clangInc += LLVM_PREFIX;
+        clangInc += "/lib/clang/";
+        clangInc += CLANG_VERSION_STRING;
+        clangInc += "/include";
+    }
+    return clangInc.c_str();
+}
+
+unsigned levelIndex(DiagnosticsEngine::Level level) {
+    switch (level) {
+        case DiagnosticsEngine::Note:
+        case DiagnosticsEngine::Remark:
+            return 1;
+
+        case DiagnosticsEngine::Warning:
+            return 2;
+
+        case DiagnosticsEngine::Error:
+        case DiagnosticsEngine::Fatal:
+            return 3;
+
+        default:
+            return 0;
+    }
+}
+
+void printQuoted(const char *str) {
+    char *head = nullptr, *tail = const_cast<char *>(str);
+    for (;*tail != '\0'; ++tail) {
+        if (*tail != '\\' && *tail != '\"') {
+            if (head == nullptr) {
+                head = tail;
+            }
+        } else {
+            if (head != nullptr) {
+                char hold = *tail;
+                *tail = '\0';
+                std::cout << head;
+                *tail = hold;
+            }
+            std::cout << '\\' << *tail;
+            head = nullptr;
+        }
+    }
+    if (head != nullptr) {
+        std::cout << head;
+    }
+}
+
+}
 
 class CDEIndexImpl : public CDEIndex,
                      public RecursiveASTVisitor<CDEIndexImpl> {
@@ -230,8 +284,8 @@ class CiConsumer : public CodeCompleteConsumer {
                             }
                         }
                         if (completion->getBriefComment() != nullptr) {
-                            std::cout << "  // "
-                                      << completion->getBriefComment();
+                            std::cout << "  // ";
+                            printQuoted(completion->getBriefComment());
                         }
                         std::cout << "\" " << resultLen << " ";
                         resultLen += entry.length();
@@ -516,17 +570,6 @@ void CDEIndexImpl::completion(uint32_t fid,
     //    consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
 }
 
-static const char *getClangIncludeArg() {
-    static std::string clangInc("-I");
-    if (clangInc == "-I") {
-        clangInc += LLVM_PREFIX;
-        clangInc += "/lib/clang/";
-        clangInc += CLANG_VERSION_STRING;
-        clangInc += "/include";
-    }
-    return clangInc.c_str();
-}
-
 // no reference to filename here,
 // because of relocations in preprocessTUforFile->getFile->push
 void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
@@ -702,23 +745,6 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
     return unit;
 }
 
-static unsigned levelIndex(DiagnosticsEngine::Level level) {
-    switch (level) {
-        case DiagnosticsEngine::Note:
-        case DiagnosticsEngine::Remark:
-            return 1;
-
-        case DiagnosticsEngine::Warning:
-            return 2;
-
-        case DiagnosticsEngine::Error:
-        case DiagnosticsEngine::Fatal:
-            return 3;
-
-        default:
-            return 0;
-    }
-}
 
 void CDEIndexImpl::getFirstError(const std::string &filename,
                                  const StoredDiagnostic *begin,
@@ -833,7 +859,9 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
     std::cout << "(cde--error-rep [";
     // construct errors list
     for (const auto& it : errors) {
-        std::cout << quoted(it) << " ";
+        std::cout << '"';
+        printQuoted(it.c_str());
+        std::cout << '"';
     }
     std::cout << "] '(";
     // construct direct position list

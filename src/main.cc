@@ -61,6 +61,8 @@ int main(int argc, char *argv[]) {
     signal(SIGHUP, SIG_IGN);
 #endif
 
+    std::ios_base::sync_with_stdio(false);
+
     if (gccpath != "n" && !gccpath.empty()) {
         GccSupport::init(gccpath);
     }
