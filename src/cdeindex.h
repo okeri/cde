@@ -264,7 +264,7 @@ class CDEIndex {
         auto it = find_if(
             files_.begin(), end,
             [filename] (const SourceInfo &si) {
-                return fileutil::endsWith(si.filename_, filename);
+                return fileutil::endsWith(si.filename_, filename, SEPARATOR);
             });
         if (it != end) {
             return it->fileId_;

@@ -32,10 +32,20 @@
 
 namespace fileutil {
 
-bool endsWith(const std::string &str, const std::string &end) {
+bool endsWith(const std::string &str, const std::string &end,
+              const char prev) {
     size_t len = end.length();
-    if (str.length() < len) {
-        return false;
+    if (prev == 0) {
+        if (str.length() < len) {
+            return false;
+        }
+    } else if (str.length() != len) {
+        if (str.length() < len + 1) {
+            return false;
+        } else if (str[str.length() - len - 1] != prev)
+        {
+            return false;
+        }
     }
 
     for (size_t i = 0, u = str.length() - len; i < len; ++i, ++u) {

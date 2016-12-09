@@ -34,7 +34,7 @@ namespace fileutil {
 
 enum {MAX_DISP_LEN = 80};
 
-bool endsWith(const std::string &str, const std::string &end);
+bool endsWith(const std::string &str, const std::string &end, const char prev = 0);
 bool isHeader(const std::string &path);
 void deleteTrailingSep(std::string *path);
 void addTrailingSep(std::string *path);
