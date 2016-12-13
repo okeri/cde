@@ -273,22 +273,26 @@ larger than company-idle-delay for comfort usage")
 
 (add-hook 'kill-emacs-query-functions 'cde-quit)
 
+(defun cde--bring-process()
+  (let ((process-connection-type nil)
+	(process-adaptive-read-buffering nil))
+    (setq cde--process
+	  (apply 'start-process (nconc (list cde--process-name
+					     cde--process-buffer)
+				       (split-string cde-command))))
+
+      (set-process-sentinel cde--process 'cde--bring-process)
+      (set-process-query-on-exit-flag cde--process nil)
+      (set-process-filter cde--process 'cde--handle-output)))
+
 (defun cde--init()
   (unless cde--process
-    (let ((process-connection-type nil)
-          (process-adaptive-read-buffering nil))
-      (setq cde--process
-	    (apply 'start-process (nconc (list cde--process-name
-						cde--process-buffer)
-					  (split-string cde-command))))
+    (cde--bring-process)
+    (buffer-disable-undo cde--process-buffer)
+    (when cde-debug
+      (get-buffer-create "cde-dbg")
+      (buffer-disable-undo "cde-dbg"))
 
-      (when cde-debug
-	(get-buffer-create "cde-dbg")
-	(buffer-disable-undo "cde-dbg"))
-
-      (buffer-disable-undo cde--process-buffer)
-      (set-process-query-on-exit-flag cde--process nil)
-      (set-process-filter cde--process 'cde--handle-output))
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
     (push 'cde--unmap write-file-functions)
