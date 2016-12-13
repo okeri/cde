@@ -17,6 +17,7 @@
 */
 
 #include <string.h>
+#include <stdlib.h>
 #include <iostream>
 #include "strbreak.h"
 #include "gccsupport.h"
@@ -29,7 +30,7 @@ GccSupport& GccSupport::inst() {
 
 void GccSupport::init(const std::string &path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
-    setlocale (LC_ALL, "");
+    setenv("LANG", "C" , 1);
     FILE *pipe = popen(cmd.c_str(), "r");
     if (pipe) {
         char buffer[0xfff];
