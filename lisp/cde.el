@@ -273,7 +273,7 @@ larger than company-idle-delay for comfort usage")
 
 (add-hook 'kill-emacs-query-functions 'cde-quit)
 
-(defun cde--bring-process()
+(defun cde--bring-process(&optional process &optional event)
   (let ((process-connection-type nil)
 	(process-adaptive-read-buffering nil))
     (setq cde--process
