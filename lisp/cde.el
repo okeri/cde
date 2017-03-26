@@ -13,6 +13,7 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
+
 (require 'company-template)
 (require 'cl-lib)
 
@@ -216,7 +217,6 @@ larger than company-idle-delay for comfort usage")
       (setq-local buffer-read-only t)
       (goto-char (point-min)))))
 
-
 (defvar cde-ref-mode-map
   (let ((map (make-keymap)))
     (define-key map (kbd "RET") 'cde-ref-jmp) map)
@@ -224,7 +224,6 @@ larger than company-idle-delay for comfort usage")
 
 (define-derived-mode cde-ref-mode nil "cde references"
   "Major mode for cde references navigation\\{cde-ref-mode-map}")
-
 
 (defun cde--check-map()
   (unless cde--buffer-mapped
@@ -312,22 +311,14 @@ larger than company-idle-delay for comfort usage")
 (defun cde--lock(dummy)
   (setq cde--lock-guard t))
 
+(setq cde--buffer-string "(progn ")
+
 (defun cde--handle-output(process output)
-  (let ((doeval nil) (cmds))
-    (when cde-debug
-      (with-current-buffer "cde-dbg"
-	(insert output)
-	(goto-char (point-max))))
-    (with-current-buffer cde--process-buffer
-      (insert output)
-      (goto-char (point-max))
-      (setq doeval (> (line-number-at-pos) 1)))
-    (when doeval
-      (with-current-buffer cde--process-buffer
-	(setq cmds (car (read-from-string
-			 (concat "(progn " (buffer-string) ")"))))
-	(erase-buffer))
-      (eval cmds))))
+  (setq cde--buffer-string (concat cde--buffer-string output))
+  (when (equal (substring output -1) "\n")
+    (eval (car (read-from-string
+		(concat cde--buffer-string ")"))))
+    (setq cde--buffer-string "(progn ")))
 
 (defun cde--send-command(cmd)
   (when cde--process
