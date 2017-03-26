@@ -38,18 +38,6 @@
 #include "gccsupport.h"
 #include "emacsmapper.h"
 
-enum PF_FLAGS {
-    PF_NONE = 0x0,
-    PF_ERRDIAG = 0x1,
-    PF_ALLDIAG = 0x2,
-    PF_ANYDIAG = 0x3,
-    PF_FORGET = 0x8
-};
-
-constexpr PF_FLAGS operator | (PF_FLAGS a, PF_FLAGS b) {
-    return PF_FLAGS(unsigned(a) | unsigned(b));
-}
-
 using namespace clang;
 
 namespace {
@@ -157,8 +145,8 @@ class CDEIndexImpl : public CDEIndex,
 
     void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                              bool buildMap);
-    ASTUnit *parse(uint32_t tu, uint32_t file, PF_FLAGS flags);
-    ASTUnit *getParsedTU(uint32_t fid, bool all, bool *parsed = nullptr);
+    ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
+    ASTUnit *getParsedTU(uint32_t fid, bool *parsed = nullptr);
     void getFirstError(const std::string &filename,
                        const StoredDiagnostic *begin,
                        const StoredDiagnostic *end, uint32_t *errline,
@@ -313,7 +301,6 @@ CDEIndexImpl::CDEIndexImpl(const std::string& projectPath,
           pchOps_(new PCHContainerOperations()), pch_(pch) {
 }
 
-
 CDEIndexImpl::~CDEIndexImpl() {
     if (pch_) {
         fileutil::mkdir(storePath_);
@@ -327,7 +314,6 @@ CDEIndexImpl::~CDEIndexImpl() {
         delete u.second;
     }
 }
-
 
 CDEIndex *createIndex(const std::string& projectPath,
                       const std::string& storePath, bool pch) {
@@ -370,7 +356,6 @@ void CDEIndexImpl::record(const SourceLocation &locRef,
     }
 }
 
-
 bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
     const TagTypeLoc &tag = tl.getAs<TagTypeLoc>();
     if (!tag.isNull()) {
@@ -401,7 +386,6 @@ bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
     }
     return true;
 }
-
 
 bool CDEIndexImpl::VisitDecl(Decl *declaration) {
     const Decl *definition = nullptr;
@@ -438,19 +422,14 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
 }
 
 
-
 void CDEIndexImpl::preprocess(uint32_t fid) {
-    bool parsed = false;
-    ASTUnit * unit  = getParsedTU(fid, true, &parsed);
-    if (!parsed) {
-        preprocessTUforFile(unit, fid, false);
-        handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
-                          unit->stored_diag_end(), false);
-    }
+    ASTUnit * unit  = getParsedTU(fid);
+    preprocessTUforFile(unit, fid, true);
+    handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
+                      unit->stored_diag_end(), false);
 }
 
-
-ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
+ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool *parsed) {
     uint32_t tu = getAnyTU(fid);
     const auto &unitIter = units_.find(tu);
     if (unitIter != units_.end()) {
@@ -459,11 +438,10 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool all, bool *parsed) {
         if (parsed != nullptr) {
             *parsed = true;
         }
-        return parse(tu, fid, all ? PF_ALLDIAG : PF_ERRDIAG);
+        return parse(tu, fid);
     }
     return nullptr;
 }
-
 
 bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
     if (options != ParseOptions::Recursive) {
@@ -485,16 +463,16 @@ bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
 
         bool result = true;
         if (outdated || (unit == nullptr && options == ParseOptions::Force)) {
-            unit = parse(tu, fid, PF_ALLDIAG |
-                         (options == ParseOptions::Forget ?
-                          PF_FORGET : PF_NONE));
+            unit = parse(tu, fid, options != ParseOptions::Forget);
 
             result = unit != nullptr;
             if (result && options == ParseOptions::Forget) {
                 delete units_[tu];
                 units_.erase(tu);
             }
-        } else if (unit != nullptr && options == ParseOptions::Force) {
+        }
+        if (options == ParseOptions::Force) {
+            preprocessTUforFile(unit, fid, true);
             handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
                               unit->stored_diag_end(), false);
         }
@@ -515,7 +493,7 @@ void CDEIndexImpl::completion(uint32_t fid,
                               const std::string &prefix, uint32_t line,
                               uint32_t column) {
 
-    ASTUnit *unit = getParsedTU(fid, false);
+    ASTUnit *unit = getParsedTU(fid);
     if (unit == nullptr) {
         return;
     }
@@ -524,6 +502,9 @@ void CDEIndexImpl::completion(uint32_t fid,
     // find error location and compare it to complete location
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
+        sm_ = &unit->getSourceManager();
+        handleDiagnostics(filename, unit->stored_diag_begin(),
+                          unit->stored_diag_end(), true);
         uint32_t errcol, errline;
         getFirstError(filename, unit->stored_diag_begin(),
                       unit->stored_diag_end(), &errline, &errcol);
@@ -557,14 +538,6 @@ void CDEIndexImpl::completion(uint32_t fid,
                        *consumer.fileMgr,
                        consumer.diagnostics,
                        consumer.temporaryBuffers);
-
-
-    if (consumer.diag->hasErrorOccurred() ||
-        consumer.diag->hasFatalErrorOccurred()) {
-        sm_ = consumer.sourceMgr.get();
-        handleDiagnostics(filename, consumer.diagnostics.begin(),
-                          consumer.diagnostics.end(), true);
-    }
 
     // TODO: ???
     //    consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
@@ -618,14 +591,14 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 
     const std::string &filename = fileName(fid);
-    const std::vector<SourceRange> &skipped = pp->getSkippedRanges();
     std::vector<std::pair<uint32_t, uint32_t>> filtered;
     uint32_t b, e, dummy;
     std::string file;
 
-    for (const auto &s : skipped) {
+    for (const auto &s : pp->getSkippedRanges()) {
         file = getLocStr(s.getBegin(), &dummy, &b);
-        if (file == filename && file == getLocStr(s.getEnd(), &dummy, &e)) {
+        if (file == filename &&
+            file == getLocStr(s.getEnd(), &dummy, &e)) {
             e--;
             if (b != e) {
                 filtered.push_back(std::make_pair(b, e));
@@ -642,7 +615,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 }
 
-ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
+ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
     std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
@@ -696,7 +669,7 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles,
-            false, flags & PF_FORGET ? 0 : 1, TU_Complete,
+            false, cache ? 1 : 0, TU_Complete,
             true, true, true, false, true, false,
 
 #if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
@@ -711,14 +684,6 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
     }
 
     sm_ = &unit->getSourceManager();
-
-    preprocessTUforFile(unit, au, true);
-
-    if (flags & PF_ANYDIAG) {
-        handleDiagnostics(fileName(tu), unit->stored_diag_begin(),
-                          unit->stored_diag_end(),
-                          (flags & PF_ERRDIAG));
-    }
 
     // do not update records_ if errors are occured
     if (unit->getDiagnostics().hasErrorOccurred() ||
@@ -744,7 +709,6 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, PF_FLAGS flags) {
     find(tu)->setTime(time(NULL));
     return unit;
 }
-
 
 void CDEIndexImpl::getFirstError(const std::string &filename,
                                  const StoredDiagnostic *begin,

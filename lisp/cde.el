@@ -47,8 +47,10 @@ other switches:
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
 (defcustom cde-debug nil "toggle debug buffer")
-(defcustom cde-check 0 "syntax check delay, MUST be or zero or
+(defcustom cde-check 0 "(EXPERIMENTAL) syntax check delay, MUST be or zero or
 larger than company-idle-delay for comfort usage")
+(defcustom cde-check-on-save nil "syntax check on save (immediately)")
+
 (defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
 
 ;; internal variables
@@ -233,7 +235,9 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--unmap()
   (when cde--buffer-mapped
-    (cde--send-command (concat "M " buffer-file-name "\n"))))
+    (cde--send-command (concat "M " buffer-file-name "\n")))
+  (when cde-check-on-save
+    (cde--check-handler)))
 
 (defun cde--check-handler()
   (when cde-mode
@@ -263,8 +267,8 @@ larger than company-idle-delay for comfort usage")
     (cancel-timer cde--check-timer))
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
-  (setq write-file-functions (delete 'cde--unmap write-file-functions))
 
+  (remove-hook 'after-save-hook 'cde--unmap)
   (remove-hook 'after-change-functions 'cde--change)
   (remove-hook 'company-completion-started-hook 'cde--lock)
   (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
@@ -295,7 +299,7 @@ larger than company-idle-delay for comfort usage")
 
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
-    (push 'cde--unmap write-file-functions)
+    (add-hook 'after-save-hook 'cde--unmap)
     (add-hook 'after-change-functions 'cde--change)
     (add-hook 'company-completion-started-hook 'cde--lock)
     (add-hook 'company-completion-cancelled-hook 'cde--unlock)
@@ -428,40 +432,39 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--error-rep(&optional errors &optional regulars &optional links)
   (cde--unlock t)
-  (when (> cde-check 0)
-    (let ((project cde--project))
-      (dolist (buf (buffer-list))
-	(with-current-buffer buf
-	  (when (and cde-mode (equal project cde--project))
-	    (setq-local cde--diags nil)
-	    (remove-overlays nil nil 'cde--diag t)))))
-    (if errors
-	(dolist (pos regulars)
-	  (let* ((file (nth 0 pos))
-		 (buf (get-file-buffer file)))
-	    (dolist (diag (cdr pos))
-	      (let* ((data (nth 1 diag))
-		     (line (nth 0 diag))
-		     (level (nth 0 data))
-		     (index (nth 1 data))
-		     (msg (aref errors index)))
-		(when buf
-		  (with-current-buffer buf
-		    (cde--hl-line line level)
-		    (push (cons line (list level msg)) cde--diags)))
-		(aset errors index (concat file ":" (int-to-string line)
-					   ": " msg)))))
-	  (dolist (pos links)
-	    (let ((buf (get-file-buffer (nth 0 pos))))
+  (let ((project cde--project))
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+	(when (and cde-mode (equal project cde--project))
+	  (setq-local cde--diags nil)
+	  (remove-overlays nil nil 'cde--diag t)))))
+  (if errors
+      (dolist (pos regulars)
+	(let* ((file (nth 0 pos))
+	       (buf (get-file-buffer file)))
+	  (dolist (diag (cdr pos))
+	    (let* ((data (nth 1 diag))
+		   (line (nth 0 diag))
+		   (level (nth 0 data))
+		   (index (nth 1 data))
+		   (msg (aref errors index)))
 	      (when buf
 		(with-current-buffer buf
-		  (dolist (diag (cdr pos))
-		    (let* ((data (nth 1 diag))
-			   (line (nth 0 diag))
-			   (level (nth 0 data)))
-		      (cde--hl-line line level)
-		      (push (cons line (list level (aref errors (nth 1 data))))
-			    cde--diags))))))))))
-    (cde--error-disp))
+		  (cde--hl-line line level)
+		  (push (cons line (list level msg)) cde--diags)))
+	      (aset errors index (concat file ":" (int-to-string line)
+					 ": " msg)))))
+	(dolist (pos links)
+	  (let ((buf (get-file-buffer (nth 0 pos))))
+	    (when buf
+	      (with-current-buffer buf
+		(dolist (diag (cdr pos))
+		  (let* ((data (nth 1 diag))
+			 (line (nth 0 diag))
+			 (level (nth 0 data)))
+		    (cde--hl-line line level)
+		    (push (cons line (list level (aref errors (nth 1 data))))
+			  cde--diags)))))))))
+  (cde--error-disp))
 
 (provide 'cde)
