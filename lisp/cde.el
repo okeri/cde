@@ -315,6 +315,11 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--handle-output(process output)
   (setq cde--buffer-string (concat cde--buffer-string output))
+  (when cde-debug
+    (with-current-buffer "cde-dbg"
+      (insert output)
+      (goto-char (point-max))))
+
   (when (equal (substring output -1) "\n")
     (eval (car (read-from-string
 		(concat cde--buffer-string ")"))))
@@ -356,6 +361,7 @@ larger than company-idle-delay for comfort usage")
   	(cde--check-map)
   	(cde--send-command (concat "C " cde--project " "
   				   buffer-file-name " "
+				   (company-grab-symbol) " "
   				   (int-to-string (line-number-at-pos pos)) " "
   				   (int-to-string
   				    (save-excursion (goto-char pos)

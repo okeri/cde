@@ -685,12 +685,6 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
 
     sm_ = &unit->getSourceManager();
 
-    // do not update records_ if errors are occured
-    if (unit->getDiagnostics().hasErrorOccurred() ||
-        unit->getDiagnostics().hasFatalErrorOccurred()) {
-        return unit;
-    }
-
     // clear records_
     const auto &end = records_.end();
     for (auto it = records_.begin(); it != end;) {
