@@ -19,6 +19,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <exception>
 #include "rapidjson/document.h"
 #include "fileutil.h"
 #include "cdeproject.h"
@@ -73,6 +74,7 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
     SourceInfo::SourceInfoPacked *pack;
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
+    bool recovery = false;
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
             index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
@@ -83,9 +85,20 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                          pack->filename(), pack->updated_time,
                          pack->parent_count, pack->parents());
         }
-        res = curs->get(&key, &data, DB_NEXT);
+        try {
+            res = curs->get(&key, &data, DB_NEXT);
+        } catch (std::exception &e) {
+            recovery = true;
+            break;
+        }
     }
     curs->close();
+
+    if (recovery) {
+        db_.close(0);
+        remove(dbpath.c_str());
+        db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
+    }
 
     // load proj values
     std::ifstream f(projectPath + SEPARATOR + PRJ_EASY);
