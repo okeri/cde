@@ -177,9 +177,6 @@ class CiConsumer : public CodeCompleteConsumer {
     SmallVector<StoredDiagnostic, 8> diagnostics;
     SmallVector<const llvm::MemoryBuffer *, 1> temporaryBuffers;
 
-    // TODO: cache completions  ???
-    //    IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccCachedAllocator;
-
   public:
     CiConsumer(const CodeCompleteOptions &CodeCompleteOpts,
                IntrusiveRefCntPtr<FileManager> fm, const std::string &prefix)
@@ -452,7 +449,9 @@ bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
         if (mapped != EmacsMapper::mapped().end()) {
             actual = mapped->second.second;
         }
-        actual = std::max(actual, (fileutil::fileTime(fileName(tu))));
+        actual = std::max(actual,
+                          std::max(fileutil::fileTime(fileName(tu)),
+                                   fileutil::fileTime(fileName(fid))));
         bool outdated = find(tu)->time() < actual;
 
         ASTUnit *unit(nullptr);
@@ -538,9 +537,6 @@ void CDEIndexImpl::completion(uint32_t fid,
                        *consumer.fileMgr,
                        consumer.diagnostics,
                        consumer.temporaryBuffers);
-
-    // TODO: ???
-    //    consumer.ccCachedAllocator = unit->getCachedCompletionAllocator();
 }
 
 // no reference to filename here,
