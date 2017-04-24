@@ -18,13 +18,13 @@
 
 #pragma once
 
-#include <string.h>
+#include <cstring>
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
-#include <map>
 #include <algorithm>
 #include "fileutil.h"
 #include "strbreak.h"
@@ -167,211 +167,51 @@ class SourceInfo {
     }
 };
 
-
 class CDEIndex {
-    std::vector<SourceInfo> files_;
-    std::map<size_t, size_t> hfilenames_;
-    std::hash<std::string> hashStr;
-
-  protected:
-    std::string storePath_;
+    class Impl;
+    std::unique_ptr<Impl> pImpl_;
 
   public:
-    std::unordered_map<CI_KEY, CI_DATA> records_;
-
-  private:
-    inline const SourceInfo* getDominatedParent(const SourceInfo * si) const {
-        const SourceInfo *token = si;
-        while (token->parents_.size() != 0 && token->args_.empty()) {
-            token = &files_[token->parents_[0]];
-        }
-        return token;
-    }
-
-    inline const std::vector<std::string> &args(uint32_t file) const {
-        return getDominatedParent(&files_[file])->args_;
-    }
-
-  protected:
-    bool haveNostdinc(uint32_t file) const {
-        const std::vector<std::string> &arguments = args(file);
-        for (const auto &s : arguments) {
-            if (s == "-nostdinc") {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void copyArgsToClangArgs(uint32_t file,
-                             std::vector<const char*> *clang_args) const {
-        const std::vector<std::string> &arguments = args(file);
-        for (const auto &s : arguments) {
-            clang_args->push_back(s.c_str());
-        }
-    }
-
-    /** get SourceInfo or nullptr by filename */
-    SourceInfo* find(const std::string &filename) {
-        auto it = hfilenames_.find(hashStr(filename));
-        return it != hfilenames_.end() ? &files_[it->second] : nullptr;
-    }
-
-    /** get SourceInfo or nullptr by file id */
-    SourceInfo* find(uint32_t fid) {
-        return fid < files_.size() ? &files_[fid] : nullptr;
-    }
-
-
-  public:
-
     enum class ParseOptions {
         Normal,
         Forget,
         Force,
         Recursive
     };
-    // assume some average project has 512 < files < 1024.
-    enum { MinIndexAlloc = 0x400 };
-
-    CDEIndex(const std::string &projectPath, const std::string& storePath)
-            : storePath_(storePath) {
-        std::string projPath = projectPath;
-        files_.reserve(MinIndexAlloc);
-        push(0, projPath);
-    }
-
-    inline std::vector<SourceInfo>::const_iterator begin() {
-        return files_.begin();
-    }
-
-    inline std::vector<SourceInfo>::const_iterator end() {
-        return files_.end();
-    }
-
-    void push(uint32_t id, const std::string &path,
-              uint32_t time = 0, uint32_t parentCount = 0,
-              uint32_t *parents = nullptr) {
-        files_.emplace_back(id, path, time, parentCount, parents);
-        SourceInfo *ret = &files_[files_.size() - 1];
-        hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
-                                          ret->fileId_));
-    }
-
-    /** find files in index  ending with filename*/
-    uint32_t findFile(const std::string &filename) {
-        const auto &end = files_.end();
-        auto it = find_if(
-            files_.begin(), end,
-            [filename] (const SourceInfo &si) {
-                return fileutil::endsWith(si.filename_, filename, SEPARATOR);
-            });
-        if (it != end) {
-            return it->fileId_;
-        }
-        return INVALID;
-    }
 
     enum { RootId = 0 };
 
-    /** get translation unit for current file*/
-    uint32_t getAnyTU(uint32_t file) {
-        uint32_t token = file;
-        while (files_[token].parents_.size() > 0 &&
-               files_[token].parents_[0] != RootId) {
-            token = files_[token].parents_[0];
-        }
-        return token;
-    }
+  public:
+    CDEIndex(const std::string &projectPath, const std::string& storePath,
+             bool pch);
+    ~CDEIndex();
+    void set(CI_KEY *key, CI_DATA *data);
+    const std::unordered_map<CI_KEY, CI_DATA> &records() const;
+    const char *fileName(uint32_t fid);
+    const std::string& projectPath();
+    void setGlobalArgs(const std::string &args);
+    std::vector<SourceInfo>::const_iterator begin();
+    std::vector<SourceInfo>::const_iterator end();
 
-    enum { MinParentNodeAlloc = 0x100 };
-
-    /** get all translation units for current file*/
-    const std::unordered_set<uint32_t> getAllTUs(uint32_t file) {
-        std::unordered_set<uint32_t> result;
-        std::vector<uint32_t> nodes;
-        unsigned curNode;
-        nodes.reserve(MinParentNodeAlloc);
-        nodes.push_back(files_[file].fileId_);
-
-        for (curNode = 0; curNode < nodes.size(); ++curNode) {
-            SourceInfo *token = &files_[nodes[curNode]];
-            for (auto it = token->parents_.begin();
-                 it != token->parents_.end(); ++it) {
-                if (std::find(nodes.begin(), nodes.end(), *it) ==
-                    nodes.end()) {
-                    nodes.push_back(*it);
-                }
-                if (token->parents_.size() == 1 &&
-                    token->parents_[0] == RootId) {
-                    result.insert(token->fileId_);
-                }
-            }
-        }
-        return result;
-    }
-
-    /** get a file from index, or add it if files is not present in index*/
-    uint32_t getFile(const std::string &filename, uint32_t parent = RootId) {
-        SourceInfo *found = find(filename);
-        if (found != nullptr) {
-            return found->fileId_;
-        } else {
-            uint32_t ret = files_.size();
-            push(ret, filename, 0, 1, &parent);
-            return ret;
-        }
-    }
-
-    /** set parent-child dependency*/
-    inline void link(uint32_t file, uint32_t pid) {
-        std::vector<uint32_t> &parents = files_[file].parents_;
-        const auto &end = parents.end();
-        if (std::find(parents.begin(), end, pid) == end) {
-            // remove wrong TU's if they have another dependencies
-            if (parents.size() == 1 &&
-                parents[0] == RootId) {
-                parents.resize(0);
-            }
-            parents.push_back(pid);
-        }
-    }
+    void push(uint32_t id, const std::string &path,
+              uint32_t time = 0, uint32_t parentCount = 0,
+              uint32_t *parents = nullptr);
 
     void setUnitWithArgs(const std::string &filename,
-                         const std::vector<std::string> &args) {
-        find(getFile(filename))->args_ = std::move(args);
-    }
-
-    inline const char *fileName(uint32_t fid) {
-        if (fid < files_.size()) {
-            return files_[fid].fileName().c_str();
-        }
-        return "<error>";
-    }
-
-    inline const std::string& projectPath() {
-        return files_[RootId].filename_;
-    }
-
-    inline void setGlobalArgs(const std::string &args) {
-        files_[RootId].setArgs(args);
-    }
+                         std::vector<std::string> &&args);
 
     void fillIncludes(uint32_t file,
-                      std::unordered_set<std::string> *includes) const {
-        const std::vector<std::string> &arguments = args(file);
-        for (const auto &s : arguments) {
-            if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
-                includes->emplace(s.c_str() + 2, s.length() - 2);
-            }
-        }
-    }
+                      std::unordered_set<std::string> *includes) const;
 
-    virtual bool parse(uint32_t fid, ParseOptions options) = 0;
-    virtual void preprocess(uint32_t fid) = 0;
-    virtual void loadPCHData() = 0;
-    virtual void completion(uint32_t fid, const std::string &prefix,
-                            uint32_t line, std::uint32_t column) = 0;
-    virtual ~CDEIndex() {
-    }
+    bool parse(uint32_t fid, ParseOptions options);
+    void preprocess(uint32_t fid);
+    void loadPCHData();
+    void completion(uint32_t fid, const std::string &prefix,
+                    uint32_t line, std::uint32_t column);
+
+    /** find files in index  ending with filename*/
+    uint32_t findFile(const std::string &filename);
+
+    /** get a file from index, or add it if files is not present in index*/
+    uint32_t getFile(const std::string &filename, uint32_t parent = RootId);
 };

@@ -19,13 +19,11 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <map>
 #include <exception>
 #include "rapidjson/document.h"
 #include "fileutil.h"
 #include "cdeproject.h"
-
-CDEIndex *createIndex(const std::string& projectPath,
-                      const std::string& storePath, bool pch);
 
 #if DB_VERSION_MAJOR > 5
 static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
@@ -63,7 +61,7 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
         }
     }
 
-    index_.reset(createIndex(projectPath, dbpath, pch));
+    index_ = std::make_unique<CDEIndex>(projectPath, dbpath, pch);
     dbpath += ".cache";
     db_.set_bt_compare(BDBKeyCmp);
     db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
@@ -77,8 +75,8 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
     bool recovery = false;
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
-            index_->records_[*static_cast<CI_KEY*>(key.get_data())] =
-                    *static_cast<CI_DATA*>(data.get_data());
+            index_->set(static_cast<CI_KEY*>(key.get_data()),
+                        static_cast<CI_DATA*>(data.get_data()));
         } else if (key.get_size() == sizeof(uint32_t)) {
             pack =  static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
             index_->push(*static_cast<uint32_t*>(key.get_data()),
@@ -163,7 +161,7 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                                      return true;
                                  });
 
-                        index_->setUnitWithArgs(filename, args);
+                        index_->setUnitWithArgs(filename, std::move(args));
                     }
                 }
             }
@@ -193,8 +191,8 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
     std::cout << "(message \"Searching...\")" << std::endl;
     index_->parse(ref.file, CDEIndex::ParseOptions::Normal);
 
-    const auto& defIt = index_->records_.find(ref);
-    if (defIt != index_->records_.end()) {
+    const auto& defIt = index_->records().find(ref);
+    if (defIt != index_->records().end()) {
         const CI_DATA &def = defIt->second;
         std::cout << "(find-file \"";
         std::cout << index_->fileName(def.file)
@@ -214,7 +212,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     index_->parse(file, CDEIndex::ParseOptions::Recursive);
 
     std::map<CI_KEY, uint32_t> results;
-    for (const auto& r : index_->records_) {
+    for (const auto& r : index_->records()) {
         if (r.second.pos == pos && r.second.file == file) {
             results[r.first] = r.second.refline;
             if (r.second.flags & CI_DATA::Forward) {
@@ -225,7 +223,7 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     }
 
     if (dfile != INVALID) {
-        for (const auto& r : index_->records_) {
+        for (const auto& r : index_->records()) {
             if (r.second.pos == dpos && r.second.file == dfile &&
                 (r.first.pos != pos || r.first.file != file)) {
                 results[r.first] = r.second.refline;
@@ -385,7 +383,7 @@ CDEProject::~CDEProject() {
     key.set_size(sizeof(CI_KEY));
     data.set_size(sizeof(CI_DATA));
 
-    for (const auto &it : index_->records_) {
+    for (const auto &it : index_->records()) {
         key.set_data(const_cast<CI_KEY*>(&it.first));
         data.set_data(const_cast<CI_DATA*>(&it.second));
         db_.put(NULL, &key, &data, 0);

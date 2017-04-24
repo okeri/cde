@@ -33,10 +33,15 @@
 
 #include <iostream>
 #include <iomanip>
+#include <map>
 
 #include "cdeindex.h"
 #include "gccsupport.h"
 #include "emacsmapper.h"
+
+#if (CLANG_VERSION_MAJOR < 4)
+#error "Unsupported version of clang"
+#endif
 
 using namespace clang;
 
@@ -94,77 +99,12 @@ void printQuoted(const char *str) {
     }
 }
 
-}
+}  // namespace
 
-class CDEIndexImpl : public CDEIndex,
-                     public RecursiveASTVisitor<CDEIndexImpl> {
-    friend class RecursiveASTVisitor<CDEIndexImpl>;
 
-    ASTContext *context_;
-    SourceManager *sm_;
-    std::shared_ptr<PCHContainerOperations> pchOps_;
-    std::map<uint32_t, ASTUnit*> units_;
-    bool pch_;
-
-    std::string getPCHFilename(uint32_t n);
-    inline const FileEntry *feFromLocation(const SourceLocation &location) {
-        FileID fileID = sm_->getFileID(location);
-
-        bool invalid = false;
-        const SrcMgr::SLocEntry &sloc =
-                sm_->getSLocEntry(fileID, &invalid);
-        if (invalid || !sloc.isFile()) {
-            return nullptr;
-        }
-        return sm_->getFileEntryForSLocEntry(sloc);
-    }
-
-    std::string getLocStr(const SourceLocation &location,
-                     uint32_t *pos, uint32_t *line = nullptr);
-
-    uint32_t getLoc(const SourceLocation &location,
-                    uint32_t *pos, uint32_t *line = nullptr);
-
-    template <class D>
-    inline void record(const SourceLocation &locRef, const D *decl,
-                       bool fwd = false) {
-        record(locRef, decl->getLocation(), fwd);
-    }
-
-    void handleDiagnostics(std::string tuFile, const StoredDiagnostic *begin,
-                           const StoredDiagnostic *end,
-                           bool onlyErrors);
-    void record(const SourceLocation &locRef, const SourceLocation &locDef,
-                bool fwd = false);
-    bool VisitDecl(Decl *d);
-    bool VisitDeclRefExpr(DeclRefExpr *e);
-    bool VisitCXXConstructExpr(CXXConstructExpr *e);
-    bool VisitMemberExpr(MemberExpr *e);
-    bool VisitTypeLoc(TypeLoc tl);
-    bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl);
-
-    void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
-                             bool buildMap);
-    ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
-    ASTUnit *getParsedTU(uint32_t fid, bool *parsed = nullptr);
-    void getFirstError(const std::string &filename,
-                       const StoredDiagnostic *begin,
-                       const StoredDiagnostic *end, uint32_t *errline,
-                       uint32_t *errcol);
-
-  public:
-    CDEIndexImpl(const std::string &projectPath, const std::string &storePath,
-                 bool pch);
-    bool parse(uint32_t fid, ParseOptions options);
-    void completion(uint32_t fid, const std::string &prefix,
-                    uint32_t line, uint32_t column);
-    void preprocess(uint32_t fid);
-    void loadPCHData();
-    ~CDEIndexImpl();
-};
-
+// CiConsumer class
 class CiConsumer : public CodeCompleteConsumer {
-    IntrusiveRefCntPtr<GlobalCodeCompletionAllocator> ccAllocator_;
+    std::shared_ptr<GlobalCodeCompletionAllocator> ccAllocator_;
     CodeCompletionTUInfo info_;
     IntrusiveRefCntPtr<DiagnosticOptions> diagOpts_;
     const std::string &prefix_;
@@ -292,13 +232,127 @@ class CiConsumer : public CodeCompleteConsumer {
     }
 };
 
-CDEIndexImpl::CDEIndexImpl(const std::string& projectPath,
-                           const std::string& storePath, bool pch)
-        : CDEIndex(projectPath, storePath),
-          pchOps_(new PCHContainerOperations()), pch_(pch) {
+// CDEIndex::Impl declaration
+
+class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
+    friend class RecursiveASTVisitor<CDEIndex::Impl>; //FIXME
+
+    // assume some average project has 512 < files < 1024.
+    enum {
+        MinParentNodeAlloc = 0x100,
+        MinIndexAlloc = 0x400
+    };
+
+    std::string storePath_;
+    bool pch_;
+
+    std::vector<SourceInfo> files_;
+    std::map<size_t, size_t> hfilenames_;
+    std::hash<std::string> hashStr;
+
+    std::unordered_map<CI_KEY, CI_DATA> records_;
+
+    ASTContext *context_;
+    SourceManager *sm_;
+    std::shared_ptr<PCHContainerOperations> pchOps_;
+    std::map<uint32_t, ASTUnit*> units_;
+
+  private:
+    /** get translation unit for current file*/
+    uint32_t getAnyTU(uint32_t file);
+
+    /** get all translation units for current file*/
+    const std::unordered_set<uint32_t> getAllTUs(uint32_t file);
+
+    /** set parent-child dependency*/
+    void link(uint32_t file, uint32_t pid);
+
+    /** get SourceInfo or nullptr by filename */
+    SourceInfo* find(const std::string &filename);
+
+    /** get SourceInfo or nullptr by file id */
+    SourceInfo* find(uint32_t fid);
+
+    bool haveNostdinc(uint32_t file) const;
+    std::string getPCHFilename(uint32_t n);
+    void copyArgsToClangArgs(uint32_t file,
+                             std::vector<const char*> *clang_args) const;
+
+    inline const FileEntry *feFromLocation(const SourceLocation &location);
+    inline const SourceInfo* getDominatedParent(const SourceInfo * si) const;
+    inline const std::vector<std::string> &args(uint32_t file) const;
+
+    std::string getLocStr(const SourceLocation &location,
+                          uint32_t *pos, uint32_t *line = nullptr);
+
+    uint32_t getLoc(const SourceLocation &location,
+                    uint32_t *pos, uint32_t *line = nullptr);
+
+    template <class D>
+    inline void record(const SourceLocation &locRef, const D *decl,
+                       bool fwd = false) {
+        record(locRef, decl->getLocation(), fwd);
+    }
+    void handleDiagnostics(const std::string &tuFile,
+                           const StoredDiagnostic *begin,
+                           const StoredDiagnostic *end,
+                           bool onlyErrors);
+    void record(const SourceLocation &locRef, const SourceLocation &locDef,
+                bool fwd = false);
+    bool VisitDecl(Decl *d);
+    bool VisitDeclRefExpr(DeclRefExpr *e);
+    bool VisitCXXConstructExpr(CXXConstructExpr *e);
+    bool VisitMemberExpr(MemberExpr *e);
+    bool VisitTypeLoc(TypeLoc tl);
+    bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl);
+
+    void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
+                             bool buildMap);
+    ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
+    ASTUnit *getParsedTU(uint32_t fid, bool *parsed = nullptr);
+    void getFirstError(const std::string &filename,
+                       const StoredDiagnostic *begin,
+                       const StoredDiagnostic *end, uint32_t *errline,
+                       uint32_t *errcol);
+
+  public:
+    Impl(const std::string &projectPath, const std::string &storePath,
+         bool pch);
+    ~Impl();
+    inline void set(CI_KEY *key, CI_DATA *data);
+    inline const std::unordered_map<CI_KEY, CI_DATA> &records() const;
+    inline const std::string& projectPath();
+    inline const char *fileName(uint32_t fid);
+    inline std::vector<SourceInfo>::const_iterator begin();
+    inline std::vector<SourceInfo>::const_iterator end();
+    inline void setGlobalArgs(const std::string &args);
+    void setUnitWithArgs(const std::string &filename,
+                         std::vector<std::string> &&args);
+    void push(uint32_t id, const std::string &path, uint32_t time,
+              uint32_t parentCount, uint32_t *parents);
+    void fillIncludes(uint32_t file,
+                      std::unordered_set<std::string> *includes) const;
+
+    uint32_t findFile(const std::string &filename);
+
+    uint32_t getFile(const std::string &filename, uint32_t parent = RootId);
+    bool parse(uint32_t fid, ParseOptions options);
+    void preprocess(uint32_t fid);
+    void loadPCHData();
+    void completion(uint32_t fid, const std::string &prefix,
+                    uint32_t line, std::uint32_t column);
+};
+
+// CDEIndex::Impl implementation
+
+CDEIndex::Impl::Impl(const std::string& projectPath,
+                     const std::string& storePath, bool pch)
+        : pchOps_(new PCHContainerOperations()), pch_(pch) {
+    files_.reserve(MinIndexAlloc);
+    push(0, projectPath, 0, 0, nullptr);
 }
 
-CDEIndexImpl::~CDEIndexImpl() {
+CDEIndex::Impl::~Impl() {
     if (pch_) {
         fileutil::mkdir(storePath_);
         for (auto &u : units_) {
@@ -312,29 +366,154 @@ CDEIndexImpl::~CDEIndexImpl() {
     }
 }
 
-CDEIndex *createIndex(const std::string& projectPath,
-                      const std::string& storePath, bool pch) {
-    return new CDEIndexImpl(projectPath, storePath, pch);
+void CDEIndex::Impl::set(CI_KEY *key, CI_DATA *data) {
+    records_[*key] = *data;
 }
 
+const std::unordered_map<CI_KEY, CI_DATA> &CDEIndex::Impl::records() const {
+    return records_;
+}
 
-bool CDEIndexImpl::VisitDeclRefExpr(DeclRefExpr *e) {
+const std::string& CDEIndex::Impl::projectPath() {
+    return files_[RootId].filename_;
+}
+
+const char *CDEIndex::Impl::fileName(uint32_t fid) {
+    if (fid < files_.size()) {
+        return files_[fid].fileName().c_str();
+    }
+    return "<error>";
+}
+
+std::vector<SourceInfo>::const_iterator CDEIndex::Impl::begin() {
+    return files_.begin();
+}
+
+std::vector<SourceInfo>::const_iterator CDEIndex::Impl::end() {
+    return files_.end();
+}
+
+void CDEIndex::Impl::setGlobalArgs(const std::string &args) {
+    files_[RootId].setArgs(args);
+}
+
+void CDEIndex::Impl::link(uint32_t file, uint32_t pid) {
+    std::vector<uint32_t> &parents = files_[file].parents_;
+    const auto &end = parents.end();
+    if (std::find(parents.begin(), end, pid) == end) {
+        // remove wrong TU's if they have another dependencies
+        if (parents.size() == 1 &&
+            parents[0] == RootId) {
+            parents.resize(0);
+        }
+        parents.push_back(pid);
+    }
+}
+
+void CDEIndex::Impl::setUnitWithArgs(const std::string &filename,
+                                     std::vector<std::string> &&args) {
+    find(getFile(filename))->args_ = std::move(args);
+}
+
+void CDEIndex::Impl::push(uint32_t id, const std::string &path, uint32_t time,
+                          uint32_t parentCount, uint32_t *parents) {
+    files_.emplace_back(id, path, time, parentCount, parents);
+    SourceInfo *ret = &files_[files_.size() - 1];
+    hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
+                                      ret->fileId_));
+}
+
+void CDEIndex::Impl::fillIncludes(uint32_t file,
+                                  std::unordered_set<std::string> *includes) const {
+    const std::vector<std::string> &arguments = args(file);
+    for (const auto &s : arguments) {
+        if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
+            includes->emplace(s.c_str() + 2, s.length() - 2);
+        }
+    }
+}
+
+uint32_t CDEIndex::Impl::findFile(const std::string &filename) {
+    const auto &end = files_.end();
+    auto it = find_if(
+        files_.begin(), end,
+        [filename] (const SourceInfo &si) {
+            return fileutil::endsWith(si.filename_, filename, SEPARATOR);
+        });
+    if (it != end) {
+        return it->fileId_;
+    }
+    return INVALID;
+}
+
+uint32_t CDEIndex::Impl::getFile(const std::string &filename, uint32_t parent) {
+    SourceInfo *found = find(filename);
+    if (found != nullptr) {
+        return found->fileId_;
+    } else {
+        uint32_t ret = files_.size();
+        push(ret, filename, 0, 1, &parent);
+        return ret;
+    }
+
+}
+
+const SourceInfo* CDEIndex::Impl::getDominatedParent(const SourceInfo * si) const {
+    const SourceInfo *token = si;
+    while (token->parents_.size() != 0 && token->args_.empty()) {
+        token = &files_[token->parents_[0]];
+    }
+    return token;
+}
+
+const std::vector<std::string> &CDEIndex::Impl::args(uint32_t file) const {
+    return getDominatedParent(&files_[file])->args_;
+}
+
+bool CDEIndex::Impl::haveNostdinc(uint32_t file) const {
+    const std::vector<std::string> &arguments = args(file);
+    for (const auto &s : arguments) {
+        if (s == "-nostdinc") {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CDEIndex::Impl::copyArgsToClangArgs(uint32_t file,
+                                         std::vector<const char*> *clang_args) const {
+    const std::vector<std::string> &arguments = args(file);
+    for (const auto &s : arguments) {
+        clang_args->push_back(s.c_str());
+    }
+}
+
+SourceInfo* CDEIndex::Impl::find(const std::string &filename) {
+    auto it = hfilenames_.find(hashStr(filename));
+    return it != hfilenames_.end() ? &files_[it->second] : nullptr;
+}
+
+SourceInfo* CDEIndex::Impl::find(uint32_t fid) {
+    return fid < files_.size() ? &files_[fid] : nullptr;
+}
+
+bool CDEIndex::Impl::VisitDeclRefExpr(DeclRefExpr *e) {
     record(e->getLocation(), e->getDecl());
     return true;
 }
 
-bool CDEIndexImpl::VisitCXXConstructExpr(CXXConstructExpr *e) {
+bool CDEIndex::Impl::VisitCXXConstructExpr(CXXConstructExpr *e) {
     record(e->getLocation(), e->getConstructor());
     return true;
 }
 
-bool CDEIndexImpl::VisitMemberExpr(MemberExpr *e) {
+bool CDEIndex::Impl::VisitMemberExpr(MemberExpr *e) {
     record(e->getMemberLoc(), e->getMemberDecl()->getCanonicalDecl());
     return true;
 }
 
-void CDEIndexImpl::record(const SourceLocation &locRef,
-                          const SourceLocation &locDef, bool fwd) {
+void CDEIndex::Impl::record(const SourceLocation &locRef,
+                            const SourceLocation &locDef, bool fwd) {
     CI_KEY ref;
     CI_DATA def;
     uint32_t refline, line;
@@ -353,7 +532,7 @@ void CDEIndexImpl::record(const SourceLocation &locRef,
     }
 }
 
-bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
+bool CDEIndex::Impl::VisitTypeLoc(TypeLoc tl) {
     const TagTypeLoc &tag = tl.getAs<TagTypeLoc>();
     if (!tag.isNull()) {
         record(tl.getBeginLoc(), tag.getDecl());
@@ -384,7 +563,7 @@ bool CDEIndexImpl::VisitTypeLoc(TypeLoc tl) {
     return true;
 }
 
-bool CDEIndexImpl::VisitDecl(Decl *declaration) {
+bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
     const Decl *definition = nullptr;
     const FunctionDecl *function_def = nullptr;
     Decl::Kind kind = declaration->getKind();
@@ -419,14 +598,47 @@ bool CDEIndexImpl::VisitDecl(Decl *declaration) {
 }
 
 
-void CDEIndexImpl::preprocess(uint32_t fid) {
+void CDEIndex::Impl::preprocess(uint32_t fid) {
     ASTUnit * unit  = getParsedTU(fid);
     preprocessTUforFile(unit, fid, true);
-    handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
+    handleDiagnostics(unit->getMainFileName(), unit->stored_diag_begin(),
                       unit->stored_diag_end(), false);
 }
 
-ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool *parsed) {
+uint32_t CDEIndex::Impl::getAnyTU(uint32_t file) {
+    uint32_t token = file;
+    while (files_[token].parents_.size() > 0 &&
+           files_[token].parents_[0] != RootId) {
+        token = files_[token].parents_[0];
+    }
+    return token;
+}
+
+const std::unordered_set<uint32_t> CDEIndex::Impl::getAllTUs(uint32_t file) {
+    std::unordered_set<uint32_t> result;
+    std::vector<uint32_t> nodes;
+    unsigned curNode;
+    nodes.reserve(MinParentNodeAlloc);
+    nodes.push_back(files_[file].fileId_);
+
+    for (curNode = 0; curNode < nodes.size(); ++curNode) {
+        SourceInfo *token = &files_[nodes[curNode]];
+        for (auto it = token->parents_.begin();
+             it != token->parents_.end(); ++it) {
+            if (std::find(nodes.begin(), nodes.end(), *it) ==
+                nodes.end()) {
+                nodes.push_back(*it);
+            }
+            if (token->parents_.size() == 1 &&
+                token->parents_[0] == RootId) {
+                result.insert(token->fileId_);
+            }
+        }
+    }
+    return result;
+}
+
+ASTUnit *CDEIndex::Impl::getParsedTU(uint32_t fid, bool *parsed) {
     uint32_t tu = getAnyTU(fid);
     const auto &unitIter = units_.find(tu);
     if (unitIter != units_.end()) {
@@ -440,7 +652,7 @@ ASTUnit *CDEIndexImpl::getParsedTU(uint32_t fid, bool *parsed) {
     return nullptr;
 }
 
-bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
+bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
     if (options != ParseOptions::Recursive) {
         uint32_t tu = getAnyTU(fid);
 
@@ -472,7 +684,7 @@ bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
         }
         if (options == ParseOptions::Force) {
             preprocessTUforFile(unit, fid, true);
-            handleDiagnostics(unit->getASTFileName(), unit->stored_diag_begin(),
+            handleDiagnostics(unit->getMainFileName(), unit->stored_diag_begin(),
                               unit->stored_diag_end(), false);
         }
         return result;
@@ -488,9 +700,9 @@ bool CDEIndexImpl::parse(uint32_t fid, ParseOptions options) {
 }
 
 // looks like in most cases we need only buffer of current file
-void CDEIndexImpl::completion(uint32_t fid,
-                              const std::string &prefix, uint32_t line,
-                              uint32_t column) {
+void CDEIndex::Impl::completion(uint32_t fid,
+                                const std::string &prefix, uint32_t line,
+                                uint32_t column) {
 
     ASTUnit *unit = getParsedTU(fid);
     if (unit == nullptr) {
@@ -541,10 +753,10 @@ void CDEIndexImpl::completion(uint32_t fid,
 
 // no reference to filename here,
 // because of relocations in preprocessTUforFile->getFile->push
-void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
-                                       bool buildMap) {
+void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
+                                         bool buildMap) {
     PreprocessingRecord *pp = unit->getPreprocessor()
-            .getPreprocessingRecord();
+                      .getPreprocessingRecord();
 
     if (pp == nullptr) {
         std::cout << "(message \"warning: preprocessor inaccessible\")"
@@ -611,7 +823,7 @@ void CDEIndexImpl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 }
 
-ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
+ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
     std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 
@@ -631,10 +843,9 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
         std::vector<const char *> args;
         args.reserve(16);
 
-#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR >= 8)
         // TODO: why ?
         args.push_back("-Xclang");
-#endif
+
         args.push_back("-Xclang");
         args.push_back("-detailed-preprocessing-record");
         args.push_back("-fsyntax-only");
@@ -659,19 +870,16 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
-#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 8)
         diags->setFatalsAsError(true);
-#endif
+
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
             pchOps_, diags, "", false, true, remappedFiles,
             false, cache ? 1 : 0, TU_Complete,
             true, true, true, false, true, false,
-
-#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
             pchOps_->getRawReader().getFormat(),
-#endif
             &errUnit);
+
         if (unit != nullptr) {
             units_[tu] = unit;
         } else {
@@ -700,10 +908,10 @@ ASTUnit *CDEIndexImpl::parse(uint32_t tu, uint32_t au, bool cache) {
     return unit;
 }
 
-void CDEIndexImpl::getFirstError(const std::string &filename,
-                                 const StoredDiagnostic *begin,
-                                 const StoredDiagnostic *end, uint32_t *errline,
-                                 uint32_t *errcol) {
+void CDEIndex::Impl::getFirstError(const std::string &filename,
+                                   const StoredDiagnostic *begin,
+                                   const StoredDiagnostic *end, uint32_t *errline,
+                                   uint32_t *errcol) {
     for (auto it = begin; it != end; ++it) {
         if (levelIndex(it->getLevel()) == 3) {
             SourceLocation sl(it->getLocation());
@@ -737,10 +945,10 @@ void CDEIndexImpl::getFirstError(const std::string &filename,
     }
 }
 
-void CDEIndexImpl::handleDiagnostics(std::string tuFile,
-                                     const StoredDiagnostic *begin,
-                                     const StoredDiagnostic *end,
-                                     bool onlyErrors) {
+void CDEIndex::Impl::handleDiagnostics(const std::string &tuFile,
+                                       const StoredDiagnostic *begin,
+                                       const StoredDiagnostic *end,
+                                       bool onlyErrors) {
     if (begin == end) {
         std::cout << "(cde--error-rep)" << std::endl;
         return;
@@ -765,8 +973,12 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
                 // register diagnostic message
                 errors.push_back(it->getMessage().str());
 
-                std::string file
-                        = sm_->getFileEntryForSLocEntry(sloc)->getName();
+                const FileEntry *fe = sm_->getFileEntryForSLocEntry(sloc);
+                if (fe == nullptr) {
+                    continue;
+                }
+
+                std::string file = fe->getName();
                 std::pair<unsigned, size_t> pos(level, errors.size() - 1);
                 uint32_t line = sm_->getExpansionLineNumber(sl);
 
@@ -799,7 +1011,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
                             pos.first > found->first) {
                             links[file][line] = pos;
                         }
-                     }
+                    }
                 }
             }
         }
@@ -823,7 +1035,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
         std::cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
             std::cout << "(" << pit.first << ".(" << pit.second.first
-                 << " " << pit.second.second << "))";
+                      << " " << pit.second.second << "))";
         }
         std::cout << "))";
     }
@@ -833,7 +1045,7 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
         std::cout << "(\"" << it.first << "\".(";
         for (const auto& pit : it.second) {
             std::cout << "(" << pit.first << ".(" << pit.second.first
-                 << " " << pit.second.second << "))";
+                      << " " << pit.second.second << "))";
         }
         std::cout << "))";
     }
@@ -841,8 +1053,8 @@ void CDEIndexImpl::handleDiagnostics(std::string tuFile,
     std::cout << "))" << std::endl;
 }
 
-std::string CDEIndexImpl::getLocStr(const SourceLocation &location,
-                 uint32_t *pos, uint32_t *line) {
+std::string CDEIndex::Impl::getLocStr(const SourceLocation &location,
+                                      uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
     const FileEntry *fe = feFromLocation(expansionLoc);
     if (fe != nullptr) {
@@ -855,8 +1067,8 @@ std::string CDEIndexImpl::getLocStr(const SourceLocation &location,
     return "<error>";
 }
 
-uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,
-                              uint32_t *pos, uint32_t *line) {
+uint32_t CDEIndex::Impl::getLoc(const SourceLocation &location,
+                                uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
     const FileEntry *fe = feFromLocation(expansionLoc);
     if (fe != nullptr) {
@@ -869,7 +1081,7 @@ uint32_t CDEIndexImpl::getLoc(const SourceLocation &location,
     return INVALID;
 }
 
-bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
+bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
     while (nnsl) {
         NestedNameSpecifier *nns = nnsl.getNestedNameSpecifier();
         switch (nns->getKind()) {
@@ -910,12 +1122,25 @@ bool CDEIndexImpl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
     return true;
 }
 
-std::string CDEIndexImpl::getPCHFilename(uint32_t n) {
+const FileEntry *CDEIndex::Impl::feFromLocation(const SourceLocation &location) {
+    FileID fileID = sm_->getFileID(location);
+
+    bool invalid = false;
+    const SrcMgr::SLocEntry &sloc =
+            sm_->getSLocEntry(fileID, &invalid);
+    if (invalid || !sloc.isFile()) {
+        return nullptr;
+    }
+    return sm_->getFileEntryForSLocEntry(sloc);
+}
+
+
+std::string CDEIndex::Impl::getPCHFilename(uint32_t n) {
     return storePath_ + SEPARATOR + std::to_string(n) + ".pch";
 }
 
 
-void CDEIndexImpl::loadPCHData() {
+void CDEIndex::Impl::loadPCHData() {
     // FIXME: disabled until llvm 3.9 will be released.
     // actually i dont know why is it crashes. But this is not
     // first-priority issue
@@ -934,17 +1159,14 @@ void CDEIndexImpl::loadPCHData() {
             const SourceInfo *si = find(id);
             if (fileutil::fileTime(si->fileName()) < si->time()) {
                 std::cout << "(message \"tryreal " << si->fileName()
-                     << "\")" << std::endl;
+                          << "\")" << std::endl;
                 auto readASTData = [=, &unit] {
                     IntrusiveRefCntPtr<DiagnosticsEngine>
                     diags(CompilerInstance::createDiagnostics(
                         new DiagnosticOptions()));
                     unit = ASTUnit::LoadFromASTFile(it, pchOps_->getRawReader(),
                                                     diags, fsopts, false,
-#if (CLANG_VERSION_MAJOR >= 3 && CLANG_VERSION_MINOR > 7)
-                                                    false,
-#endif
-                                                    None,
+                                                    false, None,
                                                     true).release();
                 };
 
@@ -959,4 +1181,81 @@ void CDEIndexImpl::loadPCHData() {
             }
         }
     }
+}
+
+// CDEIndex implementation
+CDEIndex::CDEIndex(const std::string &projectPath, const std::string& storePath,
+                   bool pch)
+        : pImpl_(std::make_unique<CDEIndex::Impl>(projectPath, storePath, pch)) {
+}
+
+CDEIndex::~CDEIndex() {
+}
+
+void CDEIndex::set(CI_KEY *key, CI_DATA *data) {
+    pImpl_->set(key, data);
+}
+
+const std::unordered_map<CI_KEY, CI_DATA> &CDEIndex::records() const {
+    return pImpl_->records();
+}
+
+std::vector<SourceInfo>::const_iterator CDEIndex::begin() {
+    return pImpl_->begin();
+}
+
+std::vector<SourceInfo>::const_iterator CDEIndex::end() {
+    return pImpl_->end();
+}
+
+const char *CDEIndex::fileName(uint32_t fid) {
+    return pImpl_->fileName(fid);
+}
+
+const std::string& CDEIndex::projectPath() {
+    return pImpl_->projectPath();
+}
+
+void CDEIndex::setGlobalArgs(const std::string &args) {
+    pImpl_->setGlobalArgs(args);
+}
+
+void CDEIndex::push(uint32_t id, const std::string &path, uint32_t time,
+                    uint32_t parentCount, uint32_t *parents) {
+    pImpl_->push(id, path, time, parentCount, parents);
+}
+
+void CDEIndex::setUnitWithArgs(const std::string &filename,
+                               std::vector<std::string> &&args) {
+    pImpl_->setUnitWithArgs(filename, std::move(args));
+}
+
+void CDEIndex::fillIncludes(uint32_t file,
+                            std::unordered_set<std::string> *includes) const {
+    pImpl_->fillIncludes(file, includes);
+}
+
+bool CDEIndex::parse(uint32_t fid, ParseOptions options) {
+    return pImpl_->parse(fid, options);
+}
+
+void CDEIndex::preprocess(uint32_t fid) {
+    pImpl_->preprocess(fid);
+}
+
+void CDEIndex::loadPCHData() {
+    pImpl_->loadPCHData();
+}
+
+void CDEIndex::completion(uint32_t fid, const std::string &prefix,
+                          uint32_t line, std::uint32_t column) {
+    pImpl_->completion(fid, prefix, line, column);
+}
+
+uint32_t CDEIndex::findFile(const std::string &filename) {
+    return pImpl_->findFile(filename);
+}
+
+uint32_t CDEIndex::getFile(const std::string &filename, uint32_t parent) {
+    return pImpl_->getFile(filename, parent);
 }

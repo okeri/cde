@@ -21,7 +21,7 @@ add_library(fileutil src/fileutil.cc)
 add_executable(cde
   src/main.cc
   src/cdeproject.cc
-  src/cdeindeximpl.cc
+  src/cdeindex.cc
   src/emacsmapper.cc
   src/gccsupport.cc)
 

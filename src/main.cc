@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'D':
-                    if (count == 4) {
+                    if (count == 4 && !commands[3].empty()) {
                         cde.definition(commands[1], commands[2],
                                        stoi(commands[3]) - 1);
                     }
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case 'R':
-                    if (count == 4) {
+                    if (count == 4 && !commands[3].empty()) {
                         cde.references(commands[1], commands[2],
                                        stoi(commands[3]) - 1);
                     }
