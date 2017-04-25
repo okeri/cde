@@ -69,6 +69,7 @@ larger than company-idle-delay for comfort usage")
 (defvar-local cde--buffer-mapped nil)
 (defvar-local cde--start nil)
 (defvar-local cde--completion-list nil)
+(defvar-local cde--diags-marker nil)
 
 (defconst cde--process-buffer " *Cde*")
 (defconst cde--process-name "cde-process")
@@ -403,9 +404,6 @@ larger than company-idle-delay for comfort usage")
 	  (setq-local cde--last-line nil)
 	  (message ""))))))
 
-;; we do not need cache results because reparse will be called on opening new
-;; file
-
 (defun cde--hl-line(line level)
   (let* ((bounds (cde--line-bounds line))
 	 (start (nth 0 bounds))
@@ -424,21 +422,21 @@ larger than company-idle-delay for comfort usage")
     (setq-local cde--project project)
     (setq-local cde--buffer-mapped t)))
 
-;; TODO: in case we are reparsing header owned by multiple TU's we are loosing
-;; messages from non-reparsed TU's (. need fix it
 
-(defun cde--error-rep(&optional errors &optional regulars &optional links)
+(defun cde--error-rep(marker &optional errors &optional regulars &optional links)
   (cde--unlock t)
   (let ((project cde--project))
     (dolist (buf (buffer-list))
       (with-current-buffer buf
 	(when (and cde-mode (equal project cde--project))
-	  (setq-local cde--diags nil)
-	  (remove-overlays nil nil 'cde--diag t)))))
+	  (when (eq cde--diags-marker marker)
+	    (setq-local cde--diags nil)
+	    (remove-overlays nil nil 'cde--diag t))))))
   (if errors
       (dolist (pos regulars)
 	(let* ((file (nth 0 pos))
 	       (buf (get-file-buffer file)))
+
 	  (dolist (diag (cdr pos))
 	    (let* ((data (nth 1 diag))
 		   (line (nth 0 diag))
@@ -448,6 +446,7 @@ larger than company-idle-delay for comfort usage")
 	      (when buf
 		(with-current-buffer buf
 		  (cde--hl-line line level)
+		  (setq-local cde--diags-marker marker)
 		  (push (cons line (list level msg)) cde--diags)))
 	      (aset errors index (concat file ":" (int-to-string line)
 					 ": " msg)))))

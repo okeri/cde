@@ -293,10 +293,13 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
                        bool fwd = false) {
         record(locRef, decl->getLocation(), fwd);
     }
-    void handleDiagnostics(const std::string &tuFile,
+    void handleDiagnostics(uint32_t marker,
+                           const std::string &tuFile,
                            const StoredDiagnostic *begin,
                            const StoredDiagnostic *end,
-                           bool onlyErrors);
+                           bool onlyErrors,
+                           uint32_t *errline = nullptr,
+                           uint32_t *errcol = nullptr);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
                 bool fwd = false);
     bool VisitDecl(Decl *d);
@@ -309,11 +312,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                              bool buildMap);
     ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
-    ASTUnit *getParsedTU(uint32_t fid, bool *parsed = nullptr);
-    void getFirstError(const std::string &filename,
-                       const StoredDiagnostic *begin,
-                       const StoredDiagnostic *end, uint32_t *errline,
-                       uint32_t *errcol);
+    ASTUnit *getParsedTU(uint32_t fid, uint32_t *tu);
 
   public:
     Impl(const std::string &projectPath, const std::string &storePath,
@@ -599,9 +598,10 @@ bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
 
 
 void CDEIndex::Impl::preprocess(uint32_t fid) {
-    ASTUnit * unit  = getParsedTU(fid);
+    uint32_t tu;
+    ASTUnit * unit  = getParsedTU(fid, &tu);
     preprocessTUforFile(unit, fid, true);
-    handleDiagnostics(unit->getMainFileName(), unit->stored_diag_begin(),
+    handleDiagnostics(tu, unit->getMainFileName(), unit->stored_diag_begin(),
                       unit->stored_diag_end(), false);
 }
 
@@ -638,16 +638,13 @@ const std::unordered_set<uint32_t> CDEIndex::Impl::getAllTUs(uint32_t file) {
     return result;
 }
 
-ASTUnit *CDEIndex::Impl::getParsedTU(uint32_t fid, bool *parsed) {
-    uint32_t tu = getAnyTU(fid);
-    const auto &unitIter = units_.find(tu);
+ASTUnit *CDEIndex::Impl::getParsedTU(uint32_t fid, uint32_t *tu) {
+    *tu = getAnyTU(fid);
+    const auto &unitIter = units_.find(*tu);
     if (unitIter != units_.end()) {
         return unitIter->second;
     } else {
-        if (parsed != nullptr) {
-            *parsed = true;
-        }
-        return parse(tu, fid);
+        return parse(*tu, fid);
     }
     return nullptr;
 }
@@ -684,7 +681,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
         }
         if (options == ParseOptions::Force) {
             preprocessTUforFile(unit, fid, true);
-            handleDiagnostics(unit->getMainFileName(), unit->stored_diag_begin(),
+            handleDiagnostics(tu, unit->getMainFileName(), unit->stored_diag_begin(),
                               unit->stored_diag_end(), false);
         }
         return result;
@@ -703,8 +700,8 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
 void CDEIndex::Impl::completion(uint32_t fid,
                                 const std::string &prefix, uint32_t line,
                                 uint32_t column) {
-
-    ASTUnit *unit = getParsedTU(fid);
+    uint32_t tu;
+    ASTUnit *unit = getParsedTU(fid, &tu);
     if (unit == nullptr) {
         return;
     }
@@ -714,11 +711,11 @@ void CDEIndex::Impl::completion(uint32_t fid,
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
         sm_ = &unit->getSourceManager();
-        handleDiagnostics(filename, unit->stored_diag_begin(),
-                          unit->stored_diag_end(), true);
         uint32_t errcol, errline;
-        getFirstError(filename, unit->stored_diag_begin(),
-                      unit->stored_diag_end(), &errline, &errcol);
+        handleDiagnostics(tu, filename, unit->stored_diag_begin(),
+                          unit->stored_diag_end(), true,
+                          &errline, &errcol);
+
         if (errline < line || (errline == line && errcol < column)) {
             std::cout << "(funcall cde--callback '())" << std::endl;
             return;
@@ -843,12 +840,10 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
         std::vector<const char *> args;
         args.reserve(16);
 
-        // TODO: why ?
-        args.push_back("-Xclang");
-
+        args.push_back("-fsyntax-only");
         args.push_back("-Xclang");
         args.push_back("-detailed-preprocessing-record");
-        args.push_back("-fsyntax-only");
+
         copyArgsToClangArgs(tu, &args);
 
         // We are not sure about language, so appending gcc c++ system include
@@ -908,49 +903,15 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
     return unit;
 }
 
-void CDEIndex::Impl::getFirstError(const std::string &filename,
-                                   const StoredDiagnostic *begin,
-                                   const StoredDiagnostic *end, uint32_t *errline,
-                                   uint32_t *errcol) {
-    for (auto it = begin; it != end; ++it) {
-        if (levelIndex(it->getLevel()) == 3) {
-            SourceLocation sl(it->getLocation());
-            FileID fileID = sm_->getFileID(sl);
-            bool invalid = false;
-            SrcMgr::SLocEntry sloc = sm_->getSLocEntry(fileID, &invalid);
-            if (invalid || !sloc.isFile()) {
-                continue;
-            }
-
-            const FileEntry *fe = sm_->getFileEntryForSLocEntry(sloc);
-            if (fe == nullptr) {
-                continue;
-            }
-            std::string file = fe->getName();
-            while (file != filename) {
-                sl = sloc.getFile().getIncludeLoc();
-                fileID = sm_->getFileID(sl);
-                sloc = sm_->getSLocEntry(fileID, &invalid);
-                if (invalid || !sloc.isFile()) {
-                    break;
-                }
-                file = sm_->getFileEntryForSLocEntry(sloc)->getName();
-            }
-            if (!invalid && sloc.isFile()) {
-                *errline = sm_->getExpansionLineNumber(sl);
-                *errcol = sm_->getExpansionColumnNumber(sl);
-                return;
-            }
-        }
-    }
-}
-
-void CDEIndex::Impl::handleDiagnostics(const std::string &tuFile,
+void CDEIndex::Impl::handleDiagnostics(uint32_t marker,
+                                       const std::string &tuFile,
                                        const StoredDiagnostic *begin,
                                        const StoredDiagnostic *end,
-                                       bool onlyErrors) {
+                                       bool onlyErrors,
+                                       uint32_t *errline,
+                                       uint32_t *errcol) {
     if (begin == end) {
-        std::cout << "(cde--error-rep)" << std::endl;
+        std::cout << "(cde--error-rep " << marker << ")" << std::endl;
         return;
     }
     std::vector<std::string> errors;
@@ -961,26 +922,20 @@ void CDEIndex::Impl::handleDiagnostics(const std::string &tuFile,
         if (*it) {
             unsigned level = levelIndex(it->getLevel());
             if (!onlyErrors || level == 3) {
-                SourceLocation sl(it->getLocation());
-                FileID fileID = sm_->getFileID(sl);
-                bool invalid = false;
-                SrcMgr::SLocEntry sloc = sm_->getSLocEntry(fileID, &invalid);
-
-                if (invalid || !sloc.isFile()) {
+                FullSourceLoc fsl(it->getLocation());
+                const SourceManager &sm = fsl.getManager();
+                FileID fileID = fsl.getFileID();
+                const FileEntry *fe = sm.getFileEntryForID(fileID);
+                if (fe == nullptr) {
                     continue;
                 }
 
                 // register diagnostic message
                 errors.push_back(it->getMessage().str());
 
-                const FileEntry *fe = sm_->getFileEntryForSLocEntry(sloc);
-                if (fe == nullptr) {
-                    continue;
-                }
-
                 std::string file = fe->getName();
                 std::pair<unsigned, size_t> pos(level, errors.size() - 1);
-                uint32_t line = sm_->getExpansionLineNumber(sl);
+                uint32_t line = fsl.getExpansionLineNumber();
 
                 // add diagnostic to current file
                 if (directs.find(file) == directs.end()) {
@@ -994,15 +949,26 @@ void CDEIndex::Impl::handleDiagnostics(const std::string &tuFile,
                 }
 
                 // add includes chain
-                while (file != tuFile) {
-                    sl = sloc.getFile().getIncludeLoc();
-                    fileID = sm_->getFileID(sl);
-                    sloc = sm_->getSLocEntry(fileID, &invalid);
-                    if (invalid || !sloc.isFile()) {
+                SourceLocation sl = fsl;
+                while (file != tuFile && sl.isValid()) {
+                    sl = sm.getIncludeLoc(fileID);
+                    if (!sl.isValid()) {
                         break;
                     }
-                    file = sm_->getFileEntryForSLocEntry(sloc)->getName();
-                    line = sm_->getExpansionLineNumber(sl);
+                    fileID = sm.getFileID(sl);
+                    line = sm.getExpansionLineNumber(sl);
+                    fe = sm.getFileEntryForID(fileID);
+                    if (fe == nullptr) {
+                        continue;
+                    }
+                    file = fe->getName();
+
+                    if (onlyErrors) {
+                        onlyErrors = false;
+                        *errline = line;
+                        *errcol = sm.getExpansionColumnNumber(sl);
+                    }
+
                     if (links.find(file) == links.end()) {
                         links[file][line] = pos;
                     } else {
@@ -1018,11 +984,11 @@ void CDEIndex::Impl::handleDiagnostics(const std::string &tuFile,
     }
 
     if (errors.empty()) {
-        std::cout << "(cde--error-rep)" << std::endl;
+        std::cout << "(cde--error-rep " << marker << ")" << std::endl;
         return;
     }
 
-    std::cout << "(cde--error-rep [";
+    std::cout << "(cde--error-rep " << marker << " [";
     // construct errors list
     for (const auto& it : errors) {
         std::cout << '"';
