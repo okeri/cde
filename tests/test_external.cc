@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     BOOST_CHECK_EQUAL(cde.recv(), ack);
     BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
                       srcfilename + "\" '((9 10)))\n");
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
     // complete
     std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
     start = std::chrono::system_clock::now();
@@ -99,7 +99,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     // in case index is not restored, diagnostics will show #pragma once
     // warning here
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
     // hdr/src.
     cde.send(std::string("F ") + path + "simple " + hdrfilename + "\n");
@@ -152,12 +152,12 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     cde.send(std::string("B ") + path + "map " +
              srcfilename + "\n");
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
     cde.send(std::string("B ") + path + "map " +
              hdrfilename + "\n");
 
-    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep)\n");
+    BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
 
     // quit
