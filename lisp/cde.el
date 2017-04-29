@@ -328,6 +328,10 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--send-command(cmd)
   (when cde--process
+    (when cde-debug
+      (with-current-buffer "cde-dbg"
+	(insert cmd)
+	(goto-char (point-max))))
     (process-send-string cde--process cmd)))
 
 (defun cde--handle-completions(completions-pack)
