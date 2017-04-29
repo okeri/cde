@@ -26,8 +26,16 @@ class CDE {
     bool nocache_;
     bool pch_;
 
-    inline CDEProject& getProject(const std::string &path) {
-        return projects_.find(path)->second;
+  private:
+    CDEProject& getProject(const std::string &path,
+                           const std::string filename) {
+        const auto &found = projects_.find(path);
+        if (found != projects_.end()) {
+            return projects_.find(path)->second;
+        } else {
+            ack(filename);
+            return projects_.find(path)->second;
+        }
     }
 
     CDEProject& getProjectByFilename(const std::string &filename) {
@@ -64,29 +72,29 @@ class CDE {
     }
 
     inline void update(const std::string &projectpath) {
-        getProject(projectpath).scanProject();
+        getProject(projectpath, "").scanProject();
     }
 
     inline void check(const std::string &projectpath,
                       const std::string &filename) {
-        getProject(projectpath).check(filename);
+        getProject(projectpath, filename).check(filename);
     }
 
     inline void definition(const std::string &projectpath,
                            const std::string &filename, uint32_t pos) {
-        getProject(projectpath).definition(filename, pos);
+        getProject(projectpath, filename).definition(filename, pos);
     }
 
     inline void references(const std::string &projectpath,
                            const std::string &filename, uint32_t pos) {
-        getProject(projectpath).references(filename, pos);
+        getProject(projectpath, filename).references(filename, pos);
     }
 
     inline void completion(const std::string &projectpath,
                            const std::string &filename,
                            const std::string &prefix, uint32_t line,
                            uint32_t column) {
-        getProject(projectpath).completion(filename, prefix, line, column);
+        getProject(projectpath, filename).completion(filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde
@@ -94,9 +102,9 @@ class CDE {
     inline void findfile(const std::string &projectpath,
                          const std::string &from, const std::string &filename) {
         if (filename == "") {
-            getProject(projectpath).swapSrcHdr(from);
+            getProject(projectpath, from).swapSrcHdr(from);
         } else {
-            getProject(projectpath).findfile(filename, from);
+            getProject(projectpath, from).findfile(filename, from);
         }
     }
 
