@@ -121,7 +121,7 @@ class CiConsumer : public CodeCompleteConsumer {
     CiConsumer(const CodeCompleteOptions &CodeCompleteOpts,
                IntrusiveRefCntPtr<FileManager> fm, const std::string &prefix)
             : CodeCompleteConsumer(CodeCompleteOpts, false),
-              ccAllocator_(new GlobalCodeCompletionAllocator),
+              ccAllocator_(std::make_shared<GlobalCodeCompletionAllocator>()),
               info_(ccAllocator_),
               diagOpts_(new DiagnosticOptions),
               prefix_(prefix),
@@ -255,7 +255,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     ASTContext *context_;
     SourceManager *sm_;
     std::shared_ptr<PCHContainerOperations> pchOps_;
-    std::map<uint32_t, ASTUnit*> units_;
+    std::map<uint32_t, std::unique_ptr<ASTUnit>> units_;
 
   private:
     /** get translation unit for current file*/
@@ -359,9 +359,6 @@ CDEIndex::Impl::~Impl() {
                 u.second->Save(getPCHFilename(u.first));
             }
         }
-    }
-    for (auto &u : units_) {
-        delete u.second;
     }
 }
 
@@ -642,7 +639,7 @@ ASTUnit *CDEIndex::Impl::getParsedTU(uint32_t fid, uint32_t *tu) {
     *tu = getAnyTU(fid);
     const auto &unitIter = units_.find(*tu);
     if (unitIter != units_.end()) {
-        return unitIter->second;
+        return unitIter->second.get();
     } else {
         return parse(*tu, fid);
     }
@@ -666,7 +663,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
         ASTUnit *unit(nullptr);
         const auto &unitIter = units_.find(tu);
         if (unitIter != units_.end()) {
-            unit = unitIter->second;
+            unit = unitIter->second.get();
         }
 
         bool result = true;
@@ -675,7 +672,6 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
 
             result = unit != nullptr;
             if (result && options == ParseOptions::Forget) {
-                delete units_[tu];
                 units_.erase(tu);
             }
         }
@@ -710,7 +706,6 @@ void CDEIndex::Impl::completion(uint32_t fid,
     // find error location and compare it to complete location
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
-        sm_ = &unit->getSourceManager();
         uint32_t errcol, errline;
         handleDiagnostics(tu, filename, unit->stored_diag_begin(),
                           unit->stored_diag_end(), true,
@@ -834,7 +829,7 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
 
     const auto &unitIter = units_.find(tu);
     if (unitIter != units_.end()) {
-        unit = unitIter->second;
+        unit = unitIter->second.get();
         unit->Reparse(pchOps_, remappedFiles);
     } else {
         std::vector<const char *> args;
@@ -876,7 +871,7 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
             &errUnit);
 
         if (unit != nullptr) {
-            units_[tu] = unit;
+            units_[tu].reset(unit);
         } else {
             return nullptr;
         }
@@ -1089,15 +1084,7 @@ bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl)
 }
 
 const FileEntry *CDEIndex::Impl::feFromLocation(const SourceLocation &location) {
-    FileID fileID = sm_->getFileID(location);
-
-    bool invalid = false;
-    const SrcMgr::SLocEntry &sloc =
-            sm_->getSLocEntry(fileID, &invalid);
-    if (invalid || !sloc.isFile()) {
-        return nullptr;
-    }
-    return sm_->getFileEntryForSLocEntry(sloc);
+    return sm_->getFileEntryForID(sm_->getFileID(location));
 }
 
 
@@ -1139,7 +1126,7 @@ void CDEIndex::Impl::loadPCHData() {
                 llvm::CrashRecoveryContext CRC;
                 if (CRC.RunSafelyOnThread(readASTData, 8 << 20)) {
                     if (unit) {
-                        units_[id] = unit;
+                        units_[id].reset(unit);
                         std::cout << "(message \"reloaded " << id
                                   << "\")" << std::endl;
                     }
