@@ -237,30 +237,28 @@ larger than company-idle-delay for comfort usage")
   (when cde--buffer-mapped
     (cde--send-command (concat "M " buffer-file-name "\n")))
   (when cde-check-on-save
-    (cde--check-handler)))
+    (cde--check-handler buffer-file-name)))
 
-(defun cde--check-handler()
+(defun cde--check-handler(buffer)
   (when cde-mode
-    (when (timerp cde--check-timer)
+    (when (and (timerp cde--check-timer) (equal buffer buffer-file-name))
       (cancel-timer cde--check-timer))
     (if (not cde--lock-guard)
-	(prog1
+	(with-current-buffer (get-file-buffer buffer)
 	  (cde--check-map)
 	  (setq cde--check-timer nil)
 	  (cde--lock t)
 	  (cde--send-command (concat "B " cde--project " "
-				     buffer-file-name "\n")))
+				     buffer "\n")))
       (setq cde--check-timer
-      	    (run-at-time cde-check nil #'cde--check-handler)))))
+      	    (run-at-time cde-check nil #'cde--check-handler buffer)))))
 
 (defun cde--change (start end len)
   (setq-local cde--buffer-mapped nil)
   (when (and cde-mode  cde--project (> cde-check 0)
 	     (not (company-in-string-or-comment)))
-    (when (timerp cde--check-timer)
-      (cancel-timer cde--check-timer))
     (setq cde--check-timer
-	  (run-at-time cde-check nil #'cde--check-handler))))
+	  (run-at-time cde-check nil #'cde--check-handler buffer-file-name))))
 
 (defun cde--deinit()
   (when (timerp cde--check-timer)
@@ -325,6 +323,7 @@ larger than company-idle-delay for comfort usage")
     (eval (car (read-from-string
 		(concat cde--buffer-string ")"))))
     (setq cde--buffer-string "(progn ")))
+
 
 (defun cde--send-command(cmd)
   (when cde--process
