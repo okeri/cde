@@ -13,8 +13,8 @@ compile_commands.json and some other formats is in roadmap)
 
 Build dependencies:
 POSIX OS
-clang-3.8-dev (or higher)
-llvm-3.8-dev (or higher)
+clang-4.x-dev (or higher)
+llvm-4.x-dev (or higher)
 libdb-5.1++-dev (or higher)
 
 Usage dependencies:
