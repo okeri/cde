@@ -99,6 +99,14 @@ void printQuoted(const char *str) {
     }
 }
 
+size_t scoredAlike(const std::string &s1, const std::string &s2) {
+    for (int i = 0; i < s1.length(); ++i)
+        if (s2.length() < i || s1[i] != s2[i]) {
+            return i;
+        }
+    return s1.length();
+}
+
 }  // namespace
 
 
@@ -329,8 +337,8 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
                          std::vector<std::string> &&args);
     void push(uint32_t id, const std::string &path, uint32_t time,
               uint32_t parentCount, uint32_t *parents);
-    void fillIncludes(uint32_t file,
-                      std::unordered_set<std::string> *includes) const;
+    std::vector<std::string> includes(uint32_t file,
+                                      const std::string &relative) const;
 
     uint32_t findFile(const std::string &filename);
 
@@ -419,14 +427,26 @@ void CDEIndex::Impl::push(uint32_t id, const std::string &path, uint32_t time,
                                       ret->fileId_));
 }
 
-void CDEIndex::Impl::fillIncludes(uint32_t file,
-                                  std::unordered_set<std::string> *includes) const {
+std::vector<std::string> CDEIndex::Impl::includes(
+    uint32_t file, const std::string &relative) const {
     const std::vector<std::string> &arguments = args(file);
+    std::vector<std::string> result;
+
     for (const auto &s : arguments) {
         if (s.length() > 2 && s[0] == '-' && s[1] == 'I') {
-            includes->emplace(s.c_str() + 2, s.length() - 2);
+            result.emplace_back(s.c_str() + 2, s.length() - 2);
         }
     }
+
+    if (!relative.empty()) {
+        result.emplace_back(relative);
+        std::stable_sort(result.begin(), result.end(), [&relative]
+                  (const std::string &a, const std::string &b) {
+                      return scoredAlike(relative, a) >
+                              scoredAlike(relative, b);
+                  });
+    }
+    return result;
 }
 
 uint32_t CDEIndex::Impl::findFile(const std::string &filename) {
@@ -1183,9 +1203,9 @@ void CDEIndex::setUnitWithArgs(const std::string &filename,
     pImpl_->setUnitWithArgs(filename, std::move(args));
 }
 
-void CDEIndex::fillIncludes(uint32_t file,
-                            std::unordered_set<std::string> *includes) const {
-    pImpl_->fillIncludes(file, includes);
+std::vector<std::string> CDEIndex::includes(
+    uint32_t file, const std::string &relative) const {
+    return pImpl_->includes(file, relative);
 }
 
 bool CDEIndex::parse(uint32_t fid, ParseOptions options) {

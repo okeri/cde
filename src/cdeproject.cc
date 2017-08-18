@@ -25,10 +25,12 @@
 #include "fileutil.h"
 #include "cdeproject.h"
 
+namespace {
+
 #if DB_VERSION_MAJOR > 5
-static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
+int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
 #else
-static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
+int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
 #endif
     if (dbt1->size == dbt2->size) {
          if (dbt1->size == sizeof(uint32_t)) {
@@ -47,6 +49,9 @@ static int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
     }
     return dbt1->size - dbt2->size;
 }
+
+}  // namespace
+
 
 CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                        bool nocache, bool pch)
@@ -251,7 +256,6 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     }
 }
 
-// TODO: use score calculation for findfile/swapSrcHdr
 void CDEProject::findfile(const std::string &filename,
                           const std::string &parent) {
     uint32_t file = index_->findFile(filename);
@@ -260,9 +264,9 @@ void CDEProject::findfile(const std::string &filename,
                   << "\")" << std::endl;
     } else {
         uint32_t pfile = index_->getFile(parent);
-        std::unordered_set<std::string> includes;
-        includes.insert(fileutil::dirUp(parent));
-        index_->fillIncludes(pfile, &includes);
+        std::vector<std::string> includes =
+                index_->includes(pfile, fileutil::dirUp(parent));
+
         for (const auto& include_path : includes) {
             std::string test = include_path;
             fileutil::addTrailingSep(&test);
@@ -302,14 +306,24 @@ void CDEProject::swapSrcHdr(const std::string &filename) {
     }
 
     const std::string &base  = fileutil::basenameNoExt(filename);
-
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
-            uint32_t file = index_->getFile(filename);
-            std::unordered_set<std::string> includes;
             std::string test;
-            includes.insert(fileutil::dirUp(filename));
-            index_->fillIncludes(file, &includes);
+            for (unsigned i = 1; exts[extIter][i] != ""; ++i) {
+                test = base + exts[extIter][i];
+                auto found = index_->findFile(test);
+
+                if (found != INVALID) {
+                    std::cout << "(find-file \"" << index_->fileName(found) << "\")"
+                              << std::endl;
+                    return;
+                }
+            }
+
+            uint32_t file = index_->getFile(filename);
+            std::vector<std::string> includes =
+                    index_->includes(file, fileutil::dirUp(filename));
+
             for (const auto& include_path : includes) {
                 test = include_path;
                 fileutil::addTrailingSep(&test);
@@ -323,8 +337,6 @@ void CDEProject::swapSrcHdr(const std::string &filename) {
                      }
                 }
             }
-            std::cout << "(message \"cannot find pair for " << filename
-                      << "\")" << std::endl;
         }
     }
     std::cout << "(message \"cannot find pair for " << filename

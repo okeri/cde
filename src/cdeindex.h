@@ -200,8 +200,8 @@ class CDEIndex {
     void setUnitWithArgs(const std::string &filename,
                          std::vector<std::string> &&args);
 
-    void fillIncludes(uint32_t file,
-                      std::unordered_set<std::string> *includes) const;
+    std::vector<std::string> includes(uint32_t file,
+                                      const std::string &relative = "") const;
 
     bool parse(uint32_t fid, ParseOptions options);
     void preprocess(uint32_t fid);
