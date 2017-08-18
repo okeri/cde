@@ -84,7 +84,7 @@ bool isHeader(const std::string &path) {
 }
 
 static bool isSource(const std::string &path) {
-    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ""};
+    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" ,""};
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;
