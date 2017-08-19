@@ -53,17 +53,18 @@ larger than company-idle-delay for comfort usage")
 (defcustom cde-check-on-save nil "syntax check on save (immediately)")
 
 (defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
+(defun empty(dummy))
 
 ;; internal variables
 (defvar cde--ring '())
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
-(defvar cde--check-timer nil)
 (defvar cde--lock-guard nil)
 
+(defvar-local cde--check-timer nil)
 (defvar-local cde--project nil)
-(defvar-local cde--callback nil)
+(defvar-local cde--callback 'empty)
 (defvar-local cde--diags nil)
 (defvar-local cde--last-line nil)
 (defvar-local cde--buffer-mapped nil)
@@ -237,12 +238,12 @@ larger than company-idle-delay for comfort usage")
   (when cde--buffer-mapped
     (cde--send-command (concat "M " buffer-file-name "\n")))
   (when cde-check-on-save
+    (when (timerp cde--check-timer)
+      (cancel-timer cde--check-timer))
     (cde--check-handler buffer-file-name)))
 
 (defun cde--check-handler(buffer)
   (when cde-mode
-    (when (and (timerp cde--check-timer) (equal buffer buffer-file-name))
-      (cancel-timer cde--check-timer))
     (if (not cde--lock-guard)
 	(with-current-buffer (get-file-buffer buffer)
 	  (cde--check-map)
@@ -250,15 +251,17 @@ larger than company-idle-delay for comfort usage")
 	  (cde--lock t)
 	  (cde--send-command (concat "B " cde--project " "
 				     buffer "\n")))
-      (setq cde--check-timer
+      (setq-local cde--check-timer
       	    (run-at-time cde-check nil #'cde--check-handler buffer)))))
 
 (defun cde--change (start end len)
   (setq-local cde--buffer-mapped nil)
   (when (and cde-mode  cde--project (> cde-check 0)
 	     (not (company-in-string-or-comment)))
-    (setq cde--check-timer
-	  (run-at-time cde-check nil #'cde--check-handler buffer-file-name))))
+    (when (timerp cde--check-timer)
+      (cancel-timer cde--check-timer))
+    (setq-local cde--check-timer
+		(run-at-time cde-check nil #'cde--check-handler buffer-file-name))))
 
 (defun cde--deinit()
   (when (timerp cde--check-timer)
