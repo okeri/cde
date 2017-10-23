@@ -6,6 +6,8 @@ else()
   message("-- Configuring Clang with ${LLVM_CONFIG}")
 endif()
 
+execute_process(COMMAND ${LLVM_CONFIG} --prefix OUTPUT_VARIABLE LLVM_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+
 # -I
 execute_process(COMMAND ${LLVM_CONFIG} --includedir OUTPUT_VARIABLE CLANG_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -20,4 +22,4 @@ string(REPLACE "\n" " " LLVM_LIBRARIES ${LLVM_LIBRARIES})
 set(CLANG_LIBRARIES "-lclangFrontend -lclangAST -lclangBasic -lclangDriver -lclangEdit -lclangLex -lclangParse -lclangSema -lclangAnalysis -lclangSerialization")
 set(CLANG_LIBRARIES "${CLANG_LIBRARIES} ${CLANG_LIBRARIES}")
 
-mark_as_advanced(CLANG_INCLUDE_DIR CLANG_LIBRARIES LLVM_LIBRARIES)
+mark_as_advanced(LLVM_PREFIX CLANG_INCLUDE_DIR CLANG_LIBRARIES LLVM_LIBRARIES)

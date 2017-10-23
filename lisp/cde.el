@@ -53,6 +53,7 @@ larger than company-idle-delay for comfort usage")
 (defcustom cde-check-on-save nil "syntax check on save (immediately)")
 
 (defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
+(defvar cde-mode-hook nil)
 (defun empty(dummy))
 
 ;; internal variables
@@ -69,6 +70,7 @@ larger than company-idle-delay for comfort usage")
 (defvar-local cde--last-line nil)
 (defvar-local cde--buffer-mapped nil)
 (defvar-local cde--start nil)
+(defvar-local cde--start-prefix nil)
 (defvar-local cde--completion-list nil)
 (defvar-local cde--diags-marker nil)
 
@@ -185,7 +187,8 @@ larger than company-idle-delay for comfort usage")
 			 (company-template-c-like-templatify
 			  (concat arg anno)))))
     (sorted t)
-    (no-cache t)))
+    (no-cache t)
+    ))
 
 ;; private functions
 (defun cde--sympos()
@@ -294,6 +297,7 @@ larger than company-idle-delay for comfort usage")
   (unless cde--process
     (cde--bring-process)
     (buffer-disable-undo cde--process-buffer)
+    (run-hooks 'cde-mode-hook)
     (when cde-debug
       (get-buffer-create "cde-dbg")
       (buffer-disable-undo "cde-dbg"))
@@ -332,7 +336,9 @@ larger than company-idle-delay for comfort usage")
   (when cde--process
     (when cde-debug
       (with-current-buffer "cde-dbg"
-	(insert cmd)
+	(if (equal (substring cmd 0 2) "M ")
+	    (insert "<--mapping file content-->\n")
+	  (insert cmd))
 	(goto-char (point-max))))
     (process-send-string cde--process cmd)))
 
@@ -348,11 +354,10 @@ larger than company-idle-delay for comfort usage")
 							   (nth 2 comp)
 							   (nth 3 comp))
 					  'meta (nth 0 comp))))))
-  (cde--filter))
+  (cde--filter (company-grab-symbol)))
 
-(defun cde--filter()
-  (let ((prefix (company-grab-symbol))
-	(completions '()))
+(defun cde--filter(prefix)
+  (let ((completions '()))
     (dolist (completion cde--completion-list)
       (when (string-prefix-p prefix completion)
 	(setq completions (nconc completions (list completion)))))
@@ -360,15 +365,18 @@ larger than company-idle-delay for comfort usage")
 
 (defun cde--candidates(callback)
   (setq-local cde--callback callback)
-  (let ((pos (or (cde--sympos) (point))))
-    (if (and (boundp 'cde--start) (eq pos cde--start))
-	(cde--filter)
+  (let ((pos (or (cde--sympos) (point)))
+	(prefix (company-grab-symbol)))
+    (if (and cde--completion-list (boundp 'cde--start) (eq pos cde--start)
+	     (or (not prefix) (string-prefix-p cde--start-prefix prefix)))
+	(cde--filter prefix)
       (progn
   	(setq-local cde--start pos)
+	(setq-local cde--start-prefix prefix)
   	(cde--check-map)
   	(cde--send-command (concat "C " cde--project " "
   				   buffer-file-name " "
-				   (company-grab-symbol) " "
+				   prefix " "
   				   (int-to-string (line-number-at-pos pos)) " "
   				   (int-to-string
   				    (save-excursion (goto-char pos)

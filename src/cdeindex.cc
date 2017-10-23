@@ -47,6 +47,10 @@ using namespace clang;
 
 namespace {
 
+#if !defined(LLVM_PREFIX) && defined(CONFIGURED_LLVM_PREFIX)
+#define LLVM_PREFIX CONFIGURED_LLVM_PREFIX
+#endif
+
 const char *getClangIncludeArg() {
     static std::string clangInc("-I");
     if (clangInc == "-I") {
@@ -57,6 +61,7 @@ const char *getClangIncludeArg() {
     }
     return clangInc.c_str();
 }
+
 
 unsigned levelIndex(DiagnosticsEngine::Level level) {
     switch (level) {
@@ -726,7 +731,7 @@ void CDEIndex::Impl::completion(uint32_t fid,
     // find error location and compare it to complete location
     if (unit->getDiagnostics().hasErrorOccurred() ||
         unit->getDiagnostics().hasFatalErrorOccurred()) {
-        uint32_t errcol, errline;
+        uint32_t errcol = column, errline = line;
         handleDiagnostics(tu, filename, unit->stored_diag_begin(),
                           unit->stored_diag_end(), true,
                           &errline, &errcol);
@@ -864,6 +869,7 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
         if (!haveNostdinc(tu)) {
+
             // clang include path
             args.push_back(getClangIncludeArg());
 
@@ -880,13 +886,18 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
         IntrusiveRefCntPtr<DiagnosticsEngine>
                 diags(CompilerInstance::createDiagnostics(
                     new DiagnosticOptions()));
-        diags->setFatalsAsError(true);
 
         unit = ASTUnit::LoadFromCommandLine(
             args.data(), args.data() + args.size(),
-            pchOps_, diags, "", false, true, remappedFiles,
-            false, cache ? 1 : 0, TU_Complete,
-            true, true, true, false, true, false,
+            pchOps_, diags,
+            "",
+            false, true, remappedFiles,
+            false, cache ? 1U : 0U, TU_Complete,
+            true, true, true, false,
+#if (CLANG_VERSION_MAJOR > 4)
+            false,
+#endif
+            true, false,
             pchOps_->getRawReader().getFormat(),
             &errUnit);
 
@@ -938,6 +949,9 @@ void CDEIndex::Impl::handleDiagnostics(uint32_t marker,
             unsigned level = levelIndex(it->getLevel());
             if (!onlyErrors || level == 3) {
                 FullSourceLoc fsl(it->getLocation());
+                if (fsl.isInvalid()) {
+                    continue;
+                }
                 const SourceManager &sm = fsl.getManager();
                 FileID fileID = fsl.getFileID();
                 const FileEntry *fe = sm.getFileEntryForID(fileID);
@@ -1137,10 +1151,16 @@ void CDEIndex::Impl::loadPCHData() {
                     IntrusiveRefCntPtr<DiagnosticsEngine>
                     diags(CompilerInstance::createDiagnostics(
                         new DiagnosticOptions()));
-                    unit = ASTUnit::LoadFromASTFile(it, pchOps_->getRawReader(),
-                                                    diags, fsopts, false,
-                                                    false, None,
-                                                    true).release();
+                    unit = ASTUnit::LoadFromASTFile(
+                        it, pchOps_->getRawReader(),
+                        ASTUnit::WhatToLoad::LoadEverything, diags,
+                        fsopts, false, false, None,
+                        true
+#if (CLANG_VERSION_MAJOR > 4)
+                        ,true ,true
+#endif
+
+                                                    ).release();
                 };
 
                 llvm::CrashRecoveryContext CRC;
