@@ -21,6 +21,7 @@
 #include <cstring>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -45,7 +46,7 @@ struct CI_KEY {
     uint32_t pos;
 
     bool operator<(const CI_KEY &rhs) const {
-        if (file == rhs.file) {
+	if (file == rhs.file) {
             return (pos < rhs.pos);
         } else {
             return (file < rhs.file);
@@ -105,17 +106,17 @@ class SourceInfo {
         uint32_t updated_time;
         uint32_t parent_count;
 
-        inline uint32_t *parents() {
+	uint32_t *parents() {
             return reinterpret_cast<uint32_t*>(this) + 2;
         }
 
-        inline char *filename() {
+	char *filename() {
             return reinterpret_cast<char *>(
                 parents() + parent_count);
         }
     };
 
-    SourceInfo(uint32_t fid, const std::string& filename,
+    SourceInfo(uint32_t fid, std::string_view filename,
                uint32_t updated_time = 0, uint32_t parentCount = 0,
                uint32_t *parents = nullptr)
             : fileId_(fid), updated_time_(updated_time),
@@ -126,18 +127,18 @@ class SourceInfo {
         }
     }
 
-    inline uint32_t getId() const {
+    uint32_t getId() const {
         return fileId_;
     }
 
-    inline const std::string& fileName() const {
+    const std::string& fileName() const {
         return filename_;
     }
 
-    inline void setArgs(const std::string& args) {
+    void setArgs(std::string_view args) {
         args_.resize(0);
-        strBreak(args, [this] (const char* head, size_t len) {
-                args_.emplace_back(head, len);
+        strBreak(args, [this] (auto begin, auto end) {
+                args_.emplace_back(begin, end);
                 return true;
             });
     }
@@ -182,36 +183,36 @@ class CDEIndex {
     enum { RootId = 0 };
 
   public:
-    CDEIndex(const std::string &projectPath, const std::string& storePath,
+    CDEIndex(std::string_view projectPath, std::string_view storePath,
              bool pch);
     ~CDEIndex();
     void set(CI_KEY *key, CI_DATA *data);
     const std::unordered_map<CI_KEY, CI_DATA> &records() const;
     const char *fileName(uint32_t fid);
     const std::string& projectPath();
-    void setGlobalArgs(const std::string &args);
+    void setGlobalArgs(std::string_view args);
     std::vector<SourceInfo>::const_iterator begin();
     std::vector<SourceInfo>::const_iterator end();
 
-    void push(uint32_t id, const std::string &path,
+    void push(uint32_t id, std::string_view path,
               uint32_t time = 0, uint32_t parentCount = 0,
               uint32_t *parents = nullptr);
 
-    void setUnitWithArgs(const std::string &filename,
+    void setUnitWithArgs(std::string_view filename,
                          std::vector<std::string> &&args);
 
     std::vector<std::string> includes(uint32_t file,
-                                      const std::string &relative = "") const;
+                                      std::string_view relative = "") const;
 
     bool parse(uint32_t fid, ParseOptions options);
     void preprocess(uint32_t fid);
     void loadPCHData();
-    void completion(uint32_t fid, const std::string &prefix,
+    void completion(uint32_t fid, std::string_view prefix,
                     uint32_t line, std::uint32_t column);
 
     /** find files in index  ending with filename*/
-    uint32_t findFile(const std::string &filename);
+    uint32_t findFile(std::string_view filename);
 
     /** get a file from index, or add it if files is not present in index*/
-    uint32_t getFile(const std::string &filename, uint32_t parent = RootId);
+    uint32_t getFile(std::string_view filename, uint32_t parent = RootId);
 };

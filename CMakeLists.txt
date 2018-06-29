@@ -8,7 +8,7 @@ project("cde")
 cmake_minimum_required(VERSION 3.1.0)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 find_package(BDB REQUIRED)
 find_package(Clang REQUIRED)
@@ -27,7 +27,7 @@ add_executable(cde
 
 set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti")
 
-target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} fileutil)
+target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} fileutil stdc++fs)
 
 if (INCLUDE_TESTS)
   enable_testing()

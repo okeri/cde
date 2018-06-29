@@ -20,6 +20,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <forward_list>
 
 #ifdef _WIN32
@@ -34,18 +35,18 @@ namespace fileutil {
 
 enum {MAX_DISP_LEN = 80};
 
-bool endsWith(const std::string &str, const std::string &end, const char prev = 0);
-bool isHeader(const std::string &path);
+bool endsWith(std::string_view str, std::string_view end, const char prev = 0);
+bool isHeader(std::string_view path);
 void deleteTrailingSep(std::string *path);
 void addTrailingSep(std::string *path);
-std::string dirUp(const std::string &path);
-std::string purify(const std::string &path);
-std::string basenameNoExt(const std::string &filename);
-std::string extension(const std::string &filename);
-uint32_t fileTime(const std::string &filename);
-bool fileExists(const std::string &filename);
-void collectFiles(const std::string &path,
+std::string dirUp(std::string_view path);
+std::string purify(std::string_view path);
+std::string basenameNoExt(std::string_view filename);
+std::string extension(std::string_view filename);
+uint32_t fileTime(std::string_view filename);
+bool fileExists(std::string_view filename);
+void collectFiles(std::string_view path,
                   std::forward_list<std::string> *files, bool checkExt = true);
 const char * findLineInFile(const std::string &filename, uint32_t ofs);
-void mkdir(const std::string& path);
+void mkdir(std::string_view path);
 }  // namespace fileutil

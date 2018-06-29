@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -18,27 +18,28 @@
 
 #pragma once
 
-#include <string>
+#include <string_view>
 
 template <typename Pred>
-void strBreak(const std::string inp, Pred handler, const size_t start = 0,
-              const size_t endpoint = std::string::npos) {
-    size_t tail = start, end = endpoint == std::string::npos ?
-            inp.length() : endpoint, head = end;
+void strBreak(std::string_view input, Pred handler, const size_t start = 0,
+              const size_t endpoint = std::string_view::npos) {
+    std::string_view::iterator tail = input.begin() + start,
+            end = endpoint == std::string_view::npos ?
+            input.end() : input.begin() + endpoint,
+            head = end;
     for (; tail < end; ++tail) {
-        if (isgraph(inp[tail])) {
+        if (isgraph(*tail)) {
             if (head == end) {
                 head = tail;
             }
         } else {
             if (head != end) {
-                size_t len = tail - head;
-                if (!handler(inp.c_str() + head, len)) {
+                if (!handler(head, tail)) {
                     return;
                 }
                 head = end;
             }
         }
     }
-    handler(inp.c_str() + head, tail - head);
+    handler(head, tail);
 }

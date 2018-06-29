@@ -44,13 +44,12 @@ void GccSupport::init(const std::string &path) {
             size_t end = result.find("End of search list.", start);
             if (end != std::string::npos) {
                 std::unordered_set<std::string> &includes = inst().includes_;
-                strBreak(result, [&includes]
-                         (const char* head, size_t len) {
-                             includes.emplace(std::string("-I") +
-                                              fileutil::purify(std::string(head,
-                                                                        len)));
+                strBreak(result, [&includes] (auto begin, auto end) {
+                        includes.emplace(std::string("-I") +
+                                         fileutil::purify(
+                                             std::string(begin, end)));
                              return true;
-                         }, start, end);
+                    }, start, end);
             } else {
                 std::cout << "(message \"" << path
                           << " returned garbage\")" << std::endl;

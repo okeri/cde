@@ -17,22 +17,46 @@
 */
 
 #include <string.h>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <sys/stat.h>
-#include <dirent.h>
-#endif
-
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 
 #include "fileutil.h"
 
+namespace {
+
+bool endsWithLow(std::string_view str, std::string_view end) {
+    size_t len = end.length();
+    if (str.length() < len) {
+        return false;
+    }
+
+    for (size_t i = 0, u = str.length() - len; i < len; ++i, ++u) {
+        if (end[i] != tolower(str[u])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isSource(std::string_view path) {
+    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" ,""};
+    for (int i = 0; exts[i] != ""; ++i) {
+        if (endsWithLow(path, exts[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+}  // namespace
+
 namespace fileutil {
 
-bool endsWith(const std::string &str, const std::string &end,
+namespace fs = std::filesystem;
+
+bool endsWith(std::string_view str, std::string_view end,
               const char prev) {
     size_t len = end.length();
     if (prev == 0) {
@@ -56,35 +80,11 @@ bool endsWith(const std::string &str, const std::string &end,
     return true;
 }
 
-static bool endsWithLow(const std::string &str, const std::string &end) {
-    size_t len = end.length();
-    if (str.length() < len) {
-        return false;
-    }
-
-    for (size_t i = 0, u = str.length() - len; i < len; ++i, ++u) {
-        if (end[i] != tolower(str[u])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool isHeader(const std::string &path) {
+bool isHeader(std::string_view path) {
     static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++", ""};
     if (path.find(".") == std::string::npos) {
         return true;
     }
-    for (int i = 0; exts[i] != ""; ++i) {
-        if (endsWithLow(path, exts[i])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool isSource(const std::string &path) {
-    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" ,""};
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;
@@ -109,19 +109,19 @@ void addTrailingSep(std::string *path) {
     }
 }
 
-std::string dirUp(const std::string &path) {
+std::string dirUp(std::string_view path) {
     size_t len = path.length();
     if (len > 1) {
         size_t pos = path.rfind(SEPARATOR, path[len - 1] == SEPARATOR ?
                                 len - 2 : std::string::npos);
         if (pos != std::string::npos) {
-            return path.substr(0, pos + 1);
+            return std::string(path.substr(0, pos + 1));
         }
     }
     return "";
 }
 
-std::string basenameNoExt(const std::string &filename) {
+std::string basenameNoExt(std::string_view filename) {
     size_t start = filename.rfind(SEPARATOR);
     size_t end = filename.rfind(".");
     if (start != std::string::npos) {
@@ -129,60 +129,41 @@ std::string basenameNoExt(const std::string &filename) {
     } else {
         start = 0;
     }
-    return filename.substr(start, end != std::string::npos ?
-                           end - start : end);
+    return std::string(filename.substr(start,
+                                       end != std::string::npos ?
+                                       end - start : end));
 }
 
-std::string extension(const std::string &filename) {
+std::string extension(std::string_view filename) {
     size_t sep = filename.rfind(SEPARATOR);
     size_t pos = filename.rfind(".");
     if ((sep < pos || sep == std::string::npos) &&
         pos != std::string::npos) {
-        return filename.substr(pos);
+        return std::string(filename.substr(pos));
     }
     return "";
 }
 
-uint32_t fileTime(const std::string &filename) {
-    struct stat st;
-    if (stat(filename.c_str(), &st) != -1) {
-        return st.st_mtim.tv_sec;
+uint32_t fileTime(std::string_view filename) {
+    std::error_code ec;
+    auto result = fs::last_write_time(filename, ec);
+    if (!ec) {
+        return std::chrono::system_clock::to_time_t(result);
     }
     return INVALID;
 }
 
-bool fileExists(const std::string &filename) {
-    struct stat st;
-    return stat(filename.c_str(), &st) != -1 && S_ISREG(st.st_mode);
+bool fileExists(std::string_view filename) {
+    return fs::exists(filename);
 }
 
-// TODO: Windows version ?
-void collectFiles(const std::string &path,
+void collectFiles(std::string_view path,
                   std::forward_list<std::string> *files, bool checkExt) {
-    struct dirent *dirent;
-    DIR *dir;
-    if ((dir = opendir(path.c_str())) != NULL) {
-        while ((dirent = readdir(dir)) != NULL) {
-            if (strcmp(dirent->d_name, ".") &&
-                strcmp(dirent->d_name, "..") &&
-                strcmp(dirent->d_name, ".git") &&
-                strcmp(dirent->d_name, ".svn")) {
-                std::string name;
-                if (path == ".") {
-                    name = dirent->d_name;
-                } else {
-                    name = path + SEPARATOR + dirent->d_name;
-                }
-                if (dirent->d_type != DT_DIR) {
-                    if (!checkExt || isSource(name)) {
-                        files->push_front(name);
-                    }
-                } else {
-                    collectFiles(name, files);
-                }
-            }
+    for (const auto& entry: fs::recursive_directory_iterator(path)) {
+        auto name = entry.path().string();
+        if (name != ".git" && name != ".svn") {
+            files->push_front(name);
         }
-        closedir(dir);
     }
 }
 
@@ -238,12 +219,13 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
 }
 
 
-void mkdir(const std::string& path) {
-    ::mkdir(path.c_str(), 0700);
+void mkdir(std::string_view path) {
+    std::error_code ec;
+    fs::create_directories(path, ec);
 }
 
 /** remove ugly ../../ from path */
-std::string purify(const std::string &path) {
+std::string purify(std::string_view path) {
     // TODO: Windows version ?
     std::string ret(path);
     size_t tokd, tok = ret.rfind("/..");
@@ -262,7 +244,7 @@ std::string purify(const std::string &path) {
         }
 
         if (tokd == std::string::npos) {
-            return path;
+            return std::string(path);
         }
         ret = ret.erase(tokd, tok - tokd + 3);
         tok = ret.rfind("/..");

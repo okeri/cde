@@ -50,14 +50,17 @@ int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
     return dbt1->size - dbt2->size;
 }
 
+static const std::string easy_file_id = ".clang_complete";
+static const std::string ccj_file_id = "compile_commands.json";
+
 }  // namespace
 
 
-CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
+CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                        bool nocache, bool pch)
         : db_(NULL, 0), nocache_(nocache) {
     // init database
-    std::string dbpath(store + SEPARATOR);
+    std::string dbpath(std::string(store) + SEPARATOR);
     size_t offset = dbpath.length();
     dbpath += projectPath;
     for (auto it = begin(dbpath) + offset; it != end(dbpath); ++it) {
@@ -104,13 +107,13 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
     }
 
     // load proj values
-    std::ifstream f(projectPath + SEPARATOR + PRJ_EASY);
+    std::ifstream f(std::string(projectPath) + SEPARATOR + easy_file_id);
     if (f) {
         std::string content((std::istreambuf_iterator<char>(f)),
                             std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
     } else {
-        f.open(projectPath + SEPARATOR + PRJ_CCJ);
+        f.open(std::string(projectPath) + SEPARATOR + ccj_file_id);
         if (f) {
             std::string content((std::istreambuf_iterator<char>(f)),
                                 std::istreambuf_iterator<char>());
@@ -150,9 +153,9 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
                         bool ignoreNext = true;  // skip just first
                         strBreak(command->value.GetString(),
                                  [&args, &ignores, &ignoreNext]
-                                 (const char* head, size_t len) {
+                                 (auto begin, auto end) {
                                      if (!ignoreNext) {
-                                         std::string arg(head, len);
+                                         std::string arg(begin, end);
                                          if (find(ignores.begin(),
                                                   ignores.end(), arg) ==
                                              ignores.end()) {
@@ -179,19 +182,19 @@ CDEProject::CDEProject(const std::string &projectPath, const std::string &store,
 }
 
 
-std::string CDEProject::findProjectRoot(const std::string &projectPath) {
-    for (std::string root = projectPath; root != "";
+std::string CDEProject::findProjectRoot(std::string_view projectPath) {
+    for (std::string root = std::string(projectPath); root != "";
          root = fileutil::dirUp(root)) {
-        if (fileutil::fileExists(root + PRJ_EASY) ||
-            fileutil::fileExists(root + PRJ_CCJ)) {
+        if (fileutil::fileExists(root + easy_file_id) ||
+            fileutil::fileExists(root + ccj_file_id)) {
             return root;
         }
     }
-    return projectPath;
+    return std::string(projectPath);
 }
 
 
-void CDEProject::definition(const std::string &filename, uint32_t pos) {
+void CDEProject::definition(std::string_view filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
     std::cout << "(message \"Searching...\")" << std::endl;
     index_->parse(ref.file, CDEIndex::ParseOptions::Normal);
@@ -210,7 +213,7 @@ void CDEProject::definition(const std::string &filename, uint32_t pos) {
 }
 
 
-void CDEProject::references(const std::string &filename, uint32_t pos) {
+void CDEProject::references(std::string_view filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),
             dfile = INVALID, dpos;
     std::cout << "(message \"Searching...\")" << std::endl;
@@ -256,8 +259,8 @@ void CDEProject::references(const std::string &filename, uint32_t pos) {
     }
 }
 
-void CDEProject::findfile(const std::string &filename,
-                          const std::string &parent) {
+void CDEProject::findfile(std::string_view filename,
+                          std::string_view parent) {
     uint32_t file = index_->findFile(filename);
     if (file != INVALID) {
         std::cout << "(find-file \"" << index_->fileName(file)
@@ -281,7 +284,7 @@ void CDEProject::findfile(const std::string &filename,
     }
 }
 
-void CDEProject::swapSrcHdr(const std::string &filename) {
+void CDEProject::swapSrcHdr(std::string_view filename) {
     static std::string exts[][9] = {
         {".c", ".h", ".H", ""},
         {".cc", ".hh", ".h", ".H", ""},
@@ -298,14 +301,14 @@ void CDEProject::swapSrcHdr(const std::string &filename) {
         {""}
     };
 
-    const std::string &ext = fileutil::extension(filename);
+    std::string ext = fileutil::extension(filename);
     if (ext == "") {
         std::cout << "(message \"file " << filename << " have no extension\")"
              << std::endl;
         return;
     }
 
-    const std::string &base  = fileutil::basenameNoExt(filename);
+    std::string base = fileutil::basenameNoExt(filename);
     for (unsigned extIter = 0; exts[extIter][0] != ""; ++extIter) {
         if (exts[extIter][0] == ext) {
             std::string test;
@@ -343,11 +346,11 @@ void CDEProject::swapSrcHdr(const std::string &filename) {
               << "\")" << std::endl;
 }
 
-bool CDEProject::fileInProject(const std::string &filename) const {
+bool CDEProject::fileInProject(std::string_view filename) const {
     return index_->findFile(filename) != INVALID;
 }
 
-void CDEProject::acknowledge(const std::string &filename) {
+void CDEProject::acknowledge(std::string_view filename) {
     std::cout << "(cde--ack \"" << filename << "\" \""
               << index_->projectPath() << "\")"
          << std::endl;
@@ -364,12 +367,12 @@ void CDEProject::scanProject() {
     std::cout << "(message \"Done!\")" << std::endl;
 }
 
-void CDEProject::check(const std::string &filename) {
+void CDEProject::check(std::string_view filename) {
     index_->parse(index_->getFile(filename), CDEIndex::ParseOptions::Force);
 }
 
-void CDEProject::completion(const std::string &filename,
-                            const std::string &prefix,
+void CDEProject::completion(std::string_view filename,
+                            std::string_view prefix,
                             uint32_t line, uint32_t column) {
     index_->completion(index_->getFile(filename), prefix, line, column);
 }

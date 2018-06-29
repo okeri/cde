@@ -20,10 +20,8 @@
 
 #include <db_cxx.h>
 #include <memory>
+#include <string_view>
 #include "cdeindex.h"
-
-#define PRJ_EASY             ".clang_complete"
-#define PRJ_CCJ        "compile_commands.json"
 
 class CDEProject {
     Db db_;
@@ -31,19 +29,19 @@ class CDEProject {
     std::unique_ptr<CDEIndex> index_;
 
   public:
-    CDEProject(const std::string &projectPath,
-               const std::string &store, bool nocache, bool pch);
+    CDEProject(std::string_view projectPath,
+               std::string_view store, bool nocache, bool pch);
     ~CDEProject();
-    bool fileInProject(const std::string &filename) const;
+    bool fileInProject(std::string_view filename) const;
     void scanProject();
-    void check(const std::string &filename);
-    void definition(const std::string &filename, uint32_t pos);
-    void references(const std::string &filename, uint32_t pos);
-    void findfile(const std::string &filename, const std::string &parent);
-    void swapSrcHdr(const std::string &filename);
-    void acknowledge(const std::string &filename);
-    void completion(const std::string &filename, const std::string &prefix,
+    void check(std::string_view filename);
+    void definition(std::string_view filename, uint32_t pos);
+    void references(std::string_view filename, uint32_t pos);
+    void findfile(std::string_view filename, std::string_view parent);
+    void swapSrcHdr(std::string_view filename);
+    void acknowledge(std::string_view filename);
+    void completion(std::string_view filename, std::string_view prefix,
                     uint32_t line, uint32_t column);
 
-    static std::string findProjectRoot(const std::string &projectPath);
+    static std::string findProjectRoot(std::string_view projectPath);
 };

@@ -104,7 +104,7 @@ void printQuoted(const char *str) {
     }
 }
 
-size_t scoredAlike(const std::string &s1, const std::string &s2) {
+size_t scoredAlike(std::string_view s1, const std::string &s2) {
     for (int i = 0; i < s1.length(); ++i)
         if (s2.length() < i || s1[i] != s2[i]) {
             return i;
@@ -114,13 +114,12 @@ size_t scoredAlike(const std::string &s1, const std::string &s2) {
 
 }  // namespace
 
-
 // CiConsumer class
 class CiConsumer : public CodeCompleteConsumer {
     std::shared_ptr<GlobalCodeCompletionAllocator> ccAllocator_;
     CodeCompletionTUInfo info_;
     IntrusiveRefCntPtr<DiagnosticOptions> diagOpts_;
-    const std::string &prefix_;
+    std::string_view prefix_;
 
   public:
     IntrusiveRefCntPtr<DiagnosticsEngine> diag;
@@ -132,7 +131,7 @@ class CiConsumer : public CodeCompleteConsumer {
 
   public:
     CiConsumer(const CodeCompleteOptions &CodeCompleteOpts,
-               IntrusiveRefCntPtr<FileManager> fm, const std::string &prefix)
+               IntrusiveRefCntPtr<FileManager> fm, std::string_view prefix)
             : CodeCompleteConsumer(CodeCompleteOpts, false),
               ccAllocator_(std::make_shared<GlobalCodeCompletionAllocator>()),
               info_(ccAllocator_),
@@ -173,12 +172,11 @@ class CiConsumer : public CodeCompleteConsumer {
                         includeBriefComments());
 
             if (!completion->getAvailability()) {
-                const std::string &entry = completion->getTypedText();
-                if (entry != "" && strncmp("operator", entry.c_str(), 8) &&
+                std::string_view entry = completion->getTypedText();
+                if (entry != "" && entry.substr(0, 8) != "operator" &&
                     entry[0] != '~') {
                     if (prefix_ == "" ||
-                        !strncmp(prefix_.c_str(), entry.c_str(),
-                                 prefix_.length())) {
+                        prefix_ == entry.substr(0, prefix_.length())) {
                         if (!hasFilteredResults) {
                             std::cout << "(cde--handle-completions '(";
                             hasFilteredResults = true;
@@ -281,7 +279,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     void link(uint32_t file, uint32_t pid);
 
     /** get SourceInfo or nullptr by filename */
-    SourceInfo* find(const std::string &filename);
+    SourceInfo* find(std::string_view filename);
 
     /** get SourceInfo or nullptr by file id */
     SourceInfo* find(uint32_t fid);
@@ -328,7 +326,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     ASTUnit *getParsedTU(uint32_t fid, uint32_t *tu);
 
   public:
-    Impl(const std::string &projectPath, const std::string &storePath,
+    Impl(std::string_view projectPath, std::string_view storePath,
          bool pch);
     ~Impl();
     inline void set(CI_KEY *key, CI_DATA *data);
@@ -337,28 +335,29 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     inline const char *fileName(uint32_t fid);
     inline std::vector<SourceInfo>::const_iterator begin();
     inline std::vector<SourceInfo>::const_iterator end();
-    inline void setGlobalArgs(const std::string &args);
-    void setUnitWithArgs(const std::string &filename,
+    void setGlobalArgs(std::string_view args);
+    void setUnitWithArgs(std::string_view filename,
                          std::vector<std::string> &&args);
-    void push(uint32_t id, const std::string &path, uint32_t time,
+    void push(uint32_t id, std::string_view path, uint32_t time,
               uint32_t parentCount, uint32_t *parents);
     std::vector<std::string> includes(uint32_t file,
-                                      const std::string &relative) const;
+                                      std::string_view relative) const;
 
-    uint32_t findFile(const std::string &filename);
+    uint32_t findFile(std::string_view filename);
 
-    uint32_t getFile(const std::string &filename, uint32_t parent = RootId);
+    uint32_t getFile(std::string_view filename, uint32_t parent = RootId);
+    uint32_t getFile(const llvm::StringRef &filename, uint32_t parent = RootId);
     bool parse(uint32_t fid, ParseOptions options);
     void preprocess(uint32_t fid);
     void loadPCHData();
-    void completion(uint32_t fid, const std::string &prefix,
+    void completion(uint32_t fid, std::string_view prefix,
                     uint32_t line, std::uint32_t column);
 };
 
 // CDEIndex::Impl implementation
 
-CDEIndex::Impl::Impl(const std::string& projectPath,
-                     const std::string& storePath, bool pch)
+CDEIndex::Impl::Impl(std::string_view projectPath,
+                     std::string_view storePath, bool pch)
         : pchOps_(new PCHContainerOperations()), pch_(pch) {
     files_.reserve(MinIndexAlloc);
     push(0, projectPath, 0, 0, nullptr);
@@ -402,7 +401,7 @@ std::vector<SourceInfo>::const_iterator CDEIndex::Impl::end() {
     return files_.end();
 }
 
-void CDEIndex::Impl::setGlobalArgs(const std::string &args) {
+void CDEIndex::Impl::setGlobalArgs(std::string_view args) {
     files_[RootId].setArgs(args);
 }
 
@@ -419,21 +418,21 @@ void CDEIndex::Impl::link(uint32_t file, uint32_t pid) {
     }
 }
 
-void CDEIndex::Impl::setUnitWithArgs(const std::string &filename,
+void CDEIndex::Impl::setUnitWithArgs(std::string_view filename,
                                      std::vector<std::string> &&args) {
     find(getFile(filename))->args_ = std::move(args);
 }
 
-void CDEIndex::Impl::push(uint32_t id, const std::string &path, uint32_t time,
+void CDEIndex::Impl::push(uint32_t id, std::string_view path, uint32_t time,
                           uint32_t parentCount, uint32_t *parents) {
-    files_.emplace_back(id, path, time, parentCount, parents);
+    files_.emplace_back(id, std::string(path), time, parentCount, parents);
     SourceInfo *ret = &files_[files_.size() - 1];
     hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
                                       ret->fileId_));
 }
 
 std::vector<std::string> CDEIndex::Impl::includes(
-    uint32_t file, const std::string &relative) const {
+    uint32_t file, std::string_view relative) const {
     const std::vector<std::string> &arguments = args(file);
     std::vector<std::string> result;
 
@@ -454,12 +453,13 @@ std::vector<std::string> CDEIndex::Impl::includes(
     return result;
 }
 
-uint32_t CDEIndex::Impl::findFile(const std::string &filename) {
+uint32_t CDEIndex::Impl::findFile(std::string_view filename) {
     const auto &end = files_.end();
     auto it = find_if(
         files_.begin(), end,
         [filename] (const SourceInfo &si) {
             return fileutil::endsWith(si.filename_, filename, SEPARATOR);
+
         });
     if (it != end) {
         return it->fileId_;
@@ -467,7 +467,7 @@ uint32_t CDEIndex::Impl::findFile(const std::string &filename) {
     return INVALID;
 }
 
-uint32_t CDEIndex::Impl::getFile(const std::string &filename, uint32_t parent) {
+uint32_t CDEIndex::Impl::getFile(std::string_view filename, uint32_t parent) {
     SourceInfo *found = find(filename);
     if (found != nullptr) {
         return found->fileId_;
@@ -476,7 +476,10 @@ uint32_t CDEIndex::Impl::getFile(const std::string &filename, uint32_t parent) {
         push(ret, filename, 0, 1, &parent);
         return ret;
     }
+}
 
+uint32_t CDEIndex::Impl::getFile(const llvm::StringRef &filename, uint32_t parent) {
+    return getFile(std::string_view(std::string(filename)), parent);
 }
 
 const SourceInfo* CDEIndex::Impl::getDominatedParent(const SourceInfo * si) const {
@@ -509,8 +512,8 @@ void CDEIndex::Impl::copyArgsToClangArgs(uint32_t file,
     }
 }
 
-SourceInfo* CDEIndex::Impl::find(const std::string &filename) {
-    auto it = hfilenames_.find(hashStr(filename));
+SourceInfo* CDEIndex::Impl::find(std::string_view filename) {
+    auto it = hfilenames_.find(hashStr(std::string(filename))); //TODO fixme
     return it != hfilenames_.end() ? &files_[it->second] : nullptr;
 }
 
@@ -719,7 +722,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
 
 // looks like in most cases we need only buffer of current file
 void CDEIndex::Impl::completion(uint32_t fid,
-                                const std::string &prefix, uint32_t line,
+                                std::string_view prefix, uint32_t line,
                                 uint32_t column) {
     uint32_t tu;
     ASTUnit *unit = getParsedTU(fid, &tu);
@@ -1177,7 +1180,7 @@ void CDEIndex::Impl::loadPCHData() {
 }
 
 // CDEIndex implementation
-CDEIndex::CDEIndex(const std::string &projectPath, const std::string& storePath,
+CDEIndex::CDEIndex(std::string_view projectPath, std::string_view storePath,
                    bool pch)
         : pImpl_(std::make_unique<CDEIndex::Impl>(projectPath, storePath, pch)) {
 }
@@ -1209,22 +1212,22 @@ const std::string& CDEIndex::projectPath() {
     return pImpl_->projectPath();
 }
 
-void CDEIndex::setGlobalArgs(const std::string &args) {
+void CDEIndex::setGlobalArgs(std::string_view args) {
     pImpl_->setGlobalArgs(args);
 }
 
-void CDEIndex::push(uint32_t id, const std::string &path, uint32_t time,
+void CDEIndex::push(uint32_t id, std::string_view path, uint32_t time,
                     uint32_t parentCount, uint32_t *parents) {
     pImpl_->push(id, path, time, parentCount, parents);
 }
 
-void CDEIndex::setUnitWithArgs(const std::string &filename,
+void CDEIndex::setUnitWithArgs(std::string_view filename,
                                std::vector<std::string> &&args) {
     pImpl_->setUnitWithArgs(filename, std::move(args));
 }
 
 std::vector<std::string> CDEIndex::includes(
-    uint32_t file, const std::string &relative) const {
+    uint32_t file, std::string_view relative) const {
     return pImpl_->includes(file, relative);
 }
 
@@ -1240,15 +1243,15 @@ void CDEIndex::loadPCHData() {
     pImpl_->loadPCHData();
 }
 
-void CDEIndex::completion(uint32_t fid, const std::string &prefix,
+void CDEIndex::completion(uint32_t fid, std::string_view prefix,
                           uint32_t line, std::uint32_t column) {
     pImpl_->completion(fid, prefix, line, column);
 }
 
-uint32_t CDEIndex::findFile(const std::string &filename) {
+uint32_t CDEIndex::findFile(std::string_view filename) {
     return pImpl_->findFile(filename);
 }
 
-uint32_t CDEIndex::getFile(const std::string &filename, uint32_t parent) {
+uint32_t CDEIndex::getFile(std::string_view filename, uint32_t parent) {
     return pImpl_->getFile(filename, parent);
 }
