@@ -246,7 +246,7 @@ larger than company-idle-delay for comfort usage")
     (cde--check-handler buffer-file-name)))
 
 (defun cde--check-handler(buffer)
-  (when cde-mode
+  (when (and cde-mode buffer)
     (if (not cde--lock-guard)
 	(with-current-buffer (get-file-buffer buffer)
 	  (cde--check-map)
