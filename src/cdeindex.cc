@@ -32,8 +32,8 @@
 #include <clang/Lex/Preprocessor.h>
 
 #include <iostream>
-#include <iomanip>
 #include <map>
+#include <charconv>
 
 #include "cdeindex.h"
 #include "gccsupport.h"
@@ -1110,7 +1110,9 @@ void CDEIndex::Impl::loadPCHData() {
     FileSystemOptions fsopts;
     for (const auto& it : files) {
         uint32_t id = 0;
-        id = stoi(fileutil::basenameNoExt(it));
+        std::string basename = fileutil::basenameNoExt(it);
+        std::from_chars(basename.data(),
+                        basename.data() + basename.length(), id);
         if (id != 0) {
             const SourceInfo *si = find(id);
             if (fileutil::fileTime(si->fileName()) < si->time()) {

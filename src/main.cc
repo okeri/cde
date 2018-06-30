@@ -20,6 +20,8 @@
 #include <signal.h>
 #endif
 
+#include <charconv>
+
 #include "cde.h"
 #include "config.h"
 #include "gccsupport.h"
@@ -74,6 +76,12 @@ int main(int argc, char *argv[]) {
     std::string command, last;
     std::vector<std::string> commands(8);
 
+    auto cast = [] (std::string_view str) -> uint32_t {
+        uint32_t result;
+        std::from_chars(str.begin(), str.end(), result);
+        return result;
+    };
+
     // Looks like we do not need error handling here :P
     while (getline(std::cin, command)) {
         commands.resize(0);
@@ -81,7 +89,6 @@ int main(int argc, char *argv[]) {
             commands.emplace_back(begin, end);
             return true;
         });
-
 
         if (unsigned count = commands.size(); count > 0) {
             switch (commands[0][0]) {
@@ -102,15 +109,15 @@ int main(int argc, char *argv[]) {
                         unsigned prefixOfs = count - 3;
                         cde.completion(commands[1], commands[2], prefixOfs ==
                                        2 ? "" : commands[prefixOfs],
-                                       stoi(commands[prefixOfs + 1]),
-                                       stoi(commands[prefixOfs + 2]) + 1);
+                                       cast(commands[prefixOfs + 1]),
+                                       cast(commands[prefixOfs + 2]) + 1);
                     }
                     break;
 
                 case 'D':
                     if (count == 4 && !commands[3].empty()) {
                         cde.definition(commands[1], commands[2],
-                                       stoi(commands[3]) - 1);
+                                       cast(commands[3]) - 1);
                     }
                     break;
 
@@ -123,7 +130,7 @@ int main(int argc, char *argv[]) {
 
                 case 'M':
                     if (count == 3) {
-                        EmacsMapper::map(commands[1], stoi(commands[2]));
+                        EmacsMapper::map(commands[1], cast(commands[2]));
                     } else {
                         EmacsMapper::unmap(commands[1]);
                     }
@@ -132,7 +139,7 @@ int main(int argc, char *argv[]) {
                 case 'R':
                     if (count == 4 && !commands[3].empty()) {
                         cde.references(commands[1], commands[2],
-                                       stoi(commands[3]) - 1);
+                                       cast(commands[3]) - 1);
                     }
                     break;
 
