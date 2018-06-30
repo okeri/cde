@@ -78,9 +78,6 @@ int main(int argc, char *argv[]) {
     while (getline(std::cin, command)) {
         commands.resize(0);
         strBreak(command, [&commands] (auto begin, auto end) {
-                if (begin == end) {
-                    throw std::runtime_error("OMG strBreak is stupid");
-                }
             commands.emplace_back(begin, end);
             return true;
         });

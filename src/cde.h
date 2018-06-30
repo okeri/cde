@@ -27,19 +27,18 @@ class CDE {
     bool pch_;
 
   private:
-    CDEProject& getProject(std::string_view path,
-                           std::string_view filename) {
-        auto ppath = std::string(path);
-        if (const auto &found = projects_.find(ppath);
+    CDEProject& getProject(const std::string &path,
+                           const std::string &filename) {
+        if (const auto &found = projects_.find(path);
             found != projects_.end()) {
-            return projects_.find(ppath)->second;
+            return found->second;
         } else {
             ack(filename);
-            return projects_.find(ppath)->second;
+            return projects_.find(path)->second;
         }
     }
 
-    CDEProject& getProjectByFilename(std::string_view filename) {
+    CDEProject& getProjectByFilename(const std::string &filename) {
         const auto& end = projects_.end();
 
         if  (const auto& found = find_if(
@@ -69,40 +68,40 @@ class CDE {
     }
 
   public:
-    CDE(std::string_view store, bool nocache, bool pch)
+    CDE(const std::string &store, bool nocache, bool pch)
             : storePath_(store), nocache_(nocache) ,pch_(pch) {
     }
 
-    void update(std::string_view projectpath) {
+    void update(const std::string &projectpath) {
         getProject(projectpath, "").scanProject();
     }
 
-    void check(std::string_view projectpath,
-               std::string_view filename) {
+    void check(const std::string &projectpath,
+               const std::string &filename) {
         getProject(projectpath, filename).check(filename);
     }
 
-    void definition(std::string_view projectpath,
-                    std::string_view filename, uint32_t pos) {
+    void definition(const std::string &projectpath,
+                    const std::string &filename, uint32_t pos) {
         getProject(projectpath, filename).definition(filename, pos);
     }
 
-    void references(std::string_view projectpath,
-                    std::string_view filename, uint32_t pos) {
+    void references(const std::string &projectpath,
+                    const std::string &filename, uint32_t pos) {
         getProject(projectpath, filename).references(filename, pos);
     }
 
-    void completion(std::string_view projectpath,
-                    std::string_view filename,
-                    std::string_view prefix, uint32_t line,
+    void completion(const std::string &projectpath,
+                    const std::string &filename,
+                    const std::string &prefix, uint32_t line,
                     uint32_t column) {
         getProject(projectpath, filename).completion(filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde
     // that's why we searching file in index first
-    void findfile(std::string_view projectpath,
-                  std::string_view from, std::string_view filename) {
+    void findfile(const std::string &projectpath,
+                  const std::string &from, const std::string &filename) {
         if (filename == "") {
             getProject(projectpath, from).swapSrcHdr(from);
         } else {
@@ -110,7 +109,7 @@ class CDE {
         }
     }
 
-    void ack(std::string_view filename) {
+    void ack(const std::string &filename) {
         getProjectByFilename(filename).acknowledge(filename);
     }
 };
