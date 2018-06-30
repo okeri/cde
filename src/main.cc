@@ -78,12 +78,15 @@ int main(int argc, char *argv[]) {
     while (getline(std::cin, command)) {
         commands.resize(0);
         strBreak(command, [&commands] (auto begin, auto end) {
+                if (begin == end) {
+                    throw std::runtime_error("OMG strBreak is stupid");
+                }
             commands.emplace_back(begin, end);
             return true;
         });
 
-        unsigned count = commands.size();
-        if (count > 0) {
+
+        if (unsigned count = commands.size(); count > 0) {
             switch (commands[0][0]) {
                 case 'A':
                     if (count > 1 && command != last) {

@@ -83,7 +83,7 @@ unsigned levelIndex(DiagnosticsEngine::Level level) {
 
 void printQuoted(const char *str) {
     char *head = nullptr, *tail = const_cast<char *>(str);
-    for (;*tail != '\0'; ++tail) {
+    for (; *tail != '\0'; ++tail) {
         if (*tail != '\\' && *tail != '\"') {
             if (head == nullptr) {
                 head = tail;
@@ -260,9 +260,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     std::vector<SourceInfo> files_;
     std::map<size_t, size_t> hfilenames_;
     std::hash<std::string> hashStr;
-
     std::unordered_map<CI_KEY, CI_DATA> records_;
-
     ASTContext *context_;
     SourceManager *sm_;
     std::shared_ptr<PCHContainerOperations> pchOps_;
@@ -323,18 +321,18 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
     void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                              bool buildMap);
     ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
-    ASTUnit *getParsedTU(uint32_t fid, uint32_t *tu);
+    std::pair<uint32_t, ASTUnit *> getParsedTU(uint32_t fid);
 
   public:
     Impl(std::string_view projectPath, std::string_view storePath,
          bool pch);
     ~Impl();
-    inline void set(CI_KEY *key, CI_DATA *data);
-    inline const std::unordered_map<CI_KEY, CI_DATA> &records() const;
-    inline const std::string& projectPath();
-    inline const char *fileName(uint32_t fid);
-    inline std::vector<SourceInfo>::const_iterator begin();
-    inline std::vector<SourceInfo>::const_iterator end();
+    void set(CI_KEY *key, CI_DATA *data);
+    const std::unordered_map<CI_KEY, CI_DATA> &records() const;
+    const std::string& projectPath();
+    const char *fileName(uint32_t fid);
+    std::vector<SourceInfo>::const_iterator begin();
+    std::vector<SourceInfo>::const_iterator end();
     void setGlobalArgs(std::string_view args);
     void setUnitWithArgs(std::string_view filename,
                          std::vector<std::string> &&args);
@@ -366,9 +364,9 @@ CDEIndex::Impl::Impl(std::string_view projectPath,
 CDEIndex::Impl::~Impl() {
     if (pch_) {
         fileutil::mkdir(storePath_);
-        for (auto &u : units_) {
-            if (u.second->getTranslationUnitKind() == TU_Complete) {
-                u.second->Save(getPCHFilename(u.first));
+        for (auto &[filename, unit] : units_) {
+            if (unit->getTranslationUnitKind() == TU_Complete) {
+                unit->Save(getPCHFilename(filename));
             }
         }
     }
@@ -425,10 +423,9 @@ void CDEIndex::Impl::setUnitWithArgs(std::string_view filename,
 
 void CDEIndex::Impl::push(uint32_t id, std::string_view path, uint32_t time,
                           uint32_t parentCount, uint32_t *parents) {
-    files_.emplace_back(id, std::string(path), time, parentCount, parents);
-    SourceInfo *ret = &files_[files_.size() - 1];
-    hfilenames_.insert(std::make_pair(hashStr(ret->filename_),
-                                      ret->fileId_));
+    const SourceInfo &info = files_.emplace_back(id, std::string(path),
+                                                 time, parentCount, parents);
+    hfilenames_.emplace(hashStr(info.filename_), info.fileId_);
 }
 
 std::vector<std::string> CDEIndex::Impl::includes(
@@ -455,21 +452,18 @@ std::vector<std::string> CDEIndex::Impl::includes(
 
 uint32_t CDEIndex::Impl::findFile(std::string_view filename) {
     const auto &end = files_.end();
-    auto it = find_if(
-        files_.begin(), end,
-        [filename] (const SourceInfo &si) {
-            return fileutil::endsWith(si.filename_, filename, SEPARATOR);
-
-        });
-    if (it != end) {
+    if (auto it = find_if(
+            files_.begin(), end,
+            [filename] (const SourceInfo &si) {
+                return fileutil::endsWith(si.filename_, filename, SEPARATOR);
+            }); it != end) {
         return it->fileId_;
     }
     return INVALID;
 }
 
 uint32_t CDEIndex::Impl::getFile(std::string_view filename, uint32_t parent) {
-    SourceInfo *found = find(filename);
-    if (found != nullptr) {
+    if (auto found = find(filename); found != nullptr) {
         return found->fileId_;
     } else {
         uint32_t ret = files_.size();
@@ -513,7 +507,7 @@ void CDEIndex::Impl::copyArgsToClangArgs(uint32_t file,
 }
 
 SourceInfo* CDEIndex::Impl::find(std::string_view filename) {
-    auto it = hfilenames_.find(hashStr(std::string(filename))); //TODO fixme
+    auto it = hfilenames_.find(hashStr(std::string(filename)));
     return it != hfilenames_.end() ? &files_[it->second] : nullptr;
 }
 
@@ -557,30 +551,24 @@ void CDEIndex::Impl::record(const SourceLocation &locRef,
 }
 
 bool CDEIndex::Impl::VisitTypeLoc(TypeLoc tl) {
-    const TagTypeLoc &tag = tl.getAs<TagTypeLoc>();
-    if (!tag.isNull()) {
+    if (auto tag = tl.getAs<TagTypeLoc>(); !tag.isNull()) {
         record(tl.getBeginLoc(), tag.getDecl());
         return true;
     }
 
-    const TypedefTypeLoc &td = tl.getAs<TypedefTypeLoc>();
-    if (!td.isNull()) {
+    if (auto td = tl.getAs<TypedefTypeLoc>(); !td.isNull()) {
         record(tl.getBeginLoc(), td.getTypedefNameDecl());
         return true;
     }
 
-    const TemplateTypeParmTypeLoc &ttp = tl.getAs<TemplateTypeParmTypeLoc>();
-    if (!ttp.isNull()) {
+    if (auto ttp = tl.getAs<TemplateTypeParmTypeLoc>(); !ttp.isNull()) {
         record(tl.getBeginLoc(), ttp.getDecl());
         return true;
     }
 
-    const TemplateSpecializationTypeLoc &ts =
-            tl.getAs<TemplateSpecializationTypeLoc>();
-    if (!ts.isNull()) {
-        CXXRecordDecl *decl = ts.getTypePtr()
-                ->getAs<TemplateSpecializationType>()->getAsCXXRecordDecl();
-        if (decl) {
+    if (auto ts = tl.getAs<TemplateSpecializationTypeLoc>(); !ts.isNull()) {
+        if (auto decl = ts.getTypePtr()->getAs<TemplateSpecializationType>()->
+            getAsCXXRecordDecl(); decl) {
             record(tl.getBeginLoc(), decl);
         }
     }
@@ -623,8 +611,7 @@ bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
 
 
 void CDEIndex::Impl::preprocess(uint32_t fid) {
-    uint32_t tu;
-    ASTUnit * unit  = getParsedTU(fid, &tu);
+    auto [tu, unit] = getParsedTU(fid);
     preprocessTUforFile(unit, fid, true);
     handleDiagnostics(tu, unit->getMainFileName(), unit->stored_diag_begin(),
                       unit->stored_diag_end(), false);
@@ -647,12 +634,11 @@ const std::unordered_set<uint32_t> CDEIndex::Impl::getAllTUs(uint32_t file) {
     nodes.push_back(files_[file].fileId_);
 
     for (curNode = 0; curNode < nodes.size(); ++curNode) {
-        SourceInfo *token = &files_[nodes[curNode]];
-        for (auto it = token->parents_.begin();
-             it != token->parents_.end(); ++it) {
-            if (std::find(nodes.begin(), nodes.end(), *it) ==
+        auto token = &files_[nodes[curNode]];
+        for (auto it : token->parents_) {
+            if (std::find(nodes.begin(), nodes.end(), it) ==
                 nodes.end()) {
-                nodes.push_back(*it);
+                nodes.push_back(it);
             }
             if (token->parents_.size() == 1 &&
                 token->parents_[0] == RootId) {
@@ -663,15 +649,12 @@ const std::unordered_set<uint32_t> CDEIndex::Impl::getAllTUs(uint32_t file) {
     return result;
 }
 
-ASTUnit *CDEIndex::Impl::getParsedTU(uint32_t fid, uint32_t *tu) {
-    *tu = getAnyTU(fid);
-    const auto &unitIter = units_.find(*tu);
-    if (unitIter != units_.end()) {
-        return unitIter->second.get();
-    } else {
-        return parse(*tu, fid);
+std::pair<uint32_t, ASTUnit *> CDEIndex::Impl::getParsedTU(uint32_t fid) {
+    uint32_t tuId = getAnyTU(fid);
+    if (const auto &unitIter = units_.find(tuId); unitIter != units_.end()) {
+        return std::make_pair(unitIter->first, unitIter->second.get());
     }
-    return nullptr;
+    return std::make_pair(tuId, parse(tuId, fid));
 }
 
 bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
@@ -679,8 +662,9 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
         uint32_t tu = getAnyTU(fid);
 
         uint32_t actual = 0;
-        const auto &mapped = EmacsMapper::mapped().find(find(fid)->fileName());
-        if (mapped != EmacsMapper::mapped().end()) {
+
+        if (auto mapped = EmacsMapper::mapped().find(find(fid)->fileName());
+            mapped != EmacsMapper::mapped().end()) {
             actual = mapped->second.second;
         }
         actual = std::max(actual,
@@ -689,8 +673,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
         bool outdated = find(tu)->time() < actual;
 
         ASTUnit *unit(nullptr);
-        const auto &unitIter = units_.find(tu);
-        if (unitIter != units_.end()) {
+        if (const auto &unitIter = units_.find(tu); unitIter != units_.end()) {
             unit = unitIter->second.get();
         }
 
@@ -724,8 +707,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
 void CDEIndex::Impl::completion(uint32_t fid,
                                 std::string_view prefix, uint32_t line,
                                 uint32_t column) {
-    uint32_t tu;
-    ASTUnit *unit = getParsedTU(fid, &tu);
+    auto [tu, unit] = getParsedTU(fid);
     if (unit == nullptr) {
         return;
     }
@@ -752,11 +734,10 @@ void CDEIndex::Impl::completion(uint32_t fid,
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
 
     SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
-    for (const auto &file : EmacsMapper::mapped()) {
+    for (const auto &[name, buffer] : EmacsMapper::mapped()) {
         std::unique_ptr<llvm::MemoryBuffer> mb =
-                llvm::MemoryBuffer::getMemBufferCopy(file.second.first,
-                                                     file.first);
-        remappedFiles.emplace_back(file.first, mb.release());
+                llvm::MemoryBuffer::getMemBufferCopy(buffer.first, name);
+        remappedFiles.emplace_back(name, mb.release());
     }
     unit->CodeComplete(filename, line, column, remappedFiles,
                        opts.IncludeMacros, opts.IncludeCodePatterns,
@@ -775,9 +756,8 @@ void CDEIndex::Impl::completion(uint32_t fid,
 // because of relocations in preprocessTUforFile->getFile->push
 void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                                          bool buildMap) {
-    PreprocessingRecord *pp = unit->getPreprocessor()
-                      .getPreprocessingRecord();
 
+    auto pp = unit->getPreprocessor().getPreprocessingRecord();
     if (pp == nullptr) {
         std::cout << "(message \"warning: preprocessor inaccessible\")"
                   << std::endl;
@@ -788,8 +768,7 @@ void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
         switch (it->getKind()) {
             case PreprocessedEntity::EntityKind::MacroExpansionKind: {
                 MacroExpansion *me(cast<MacroExpansion>(it));
-                MacroDefinitionRecord *mdr = me->getDefinition();
-                if (mdr != nullptr) {
+                if (auto *mdr = me->getDefinition(); mdr != nullptr) {
                     record(me->getSourceRange().getBegin(), mdr);
                 }
             }
@@ -798,16 +777,13 @@ void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
             case PreprocessedEntity::EntityKind::InclusionDirectiveKind:
                 if (buildMap) {
                     InclusionDirective *id(cast<InclusionDirective>(it));
-                    const FileEntry *fe = feFromLocation(
-                        id->getSourceRange().getBegin());
-
+                    auto fe = feFromLocation(id->getSourceRange().getBegin());
                     if (fe == nullptr) {
                         continue;
                     }
 
-                    const FileEntry *ife = id->getFile();
                     uint32_t parent = getFile(fe->getName());
-                    if (ife != nullptr) {
+                    if (auto ife = id->getFile(); ife != nullptr) {
                         link(getFile(ife->getName(), parent), parent);
                     }
                 }
@@ -824,20 +800,18 @@ void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     std::string file;
 
     for (const auto &s : pp->getSkippedRanges()) {
-        file = getLocStr(s.getBegin(), &dummy, &b);
-        if (file == filename &&
+        if (file = getLocStr(s.getBegin(), &dummy, &b); file == filename &&
             file == getLocStr(s.getEnd(), &dummy, &e)) {
-            e--;
-            if (b != e) {
-                filtered.push_back(std::make_pair(b, e));
+            if (b != --e) {
+                filtered.emplace_back(b, e);
             }
         }
     }
 
     if (!filtered.empty()) {
         std::cout << "(cde--hideif \"" << filename << "\" '(";
-        for (const auto &f : filtered) {
-            std::cout << "(" << f.first << " " << f.second << ")";
+        for (const auto& [begin, end] : filtered) {
+            std::cout << "(" << begin << " " << end << ")";
         }
         std::cout << "))" << std::endl;
     }
@@ -855,8 +829,7 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
         remappedFiles.emplace_back(file.first, mb.release());
     }
 
-    const auto &unitIter = units_.find(tu);
-    if (unitIter != units_.end()) {
+    if (const auto &unitIter = units_.find(tu); unitIter != units_.end()) {
         unit = unitIter->second.get();
         unit->Reparse(pchOps_, remappedFiles);
     } else {
@@ -966,7 +939,7 @@ void CDEIndex::Impl::handleDiagnostics(uint32_t marker,
                 errors.push_back(it->getMessage().str());
 
                 std::string file = fe->getName();
-                std::pair<unsigned, size_t> pos(level, errors.size() - 1);
+                auto pos = std::make_pair(level, errors.size() - 1);
                 uint32_t line = fsl.getExpansionLineNumber();
 
                 // add diagnostic to current file
@@ -1054,8 +1027,7 @@ void CDEIndex::Impl::handleDiagnostics(uint32_t marker,
 std::string CDEIndex::Impl::getLocStr(const SourceLocation &location,
                                       uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
-    const FileEntry *fe = feFromLocation(expansionLoc);
-    if (fe != nullptr) {
+    if (auto fe = feFromLocation(expansionLoc); fe != nullptr) {
         *pos = sm_->getDecomposedLoc(expansionLoc).second;
         if (line) {
             *line = sm_->getExpansionLineNumber(expansionLoc);
@@ -1068,8 +1040,7 @@ std::string CDEIndex::Impl::getLocStr(const SourceLocation &location,
 uint32_t CDEIndex::Impl::getLoc(const SourceLocation &location,
                                 uint32_t *pos, uint32_t *line) {
     SourceLocation expansionLoc(sm_->getExpansionLoc(location));
-    const FileEntry *fe = feFromLocation(expansionLoc);
-    if (fe != nullptr) {
+    if (auto fe = feFromLocation(expansionLoc); fe != nullptr) {
         *pos = sm_->getDecomposedLoc(expansionLoc).second;
         if (line) {
             *line = sm_->getExpansionLineNumber(expansionLoc);
@@ -1093,19 +1064,14 @@ bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl)
 
             case NestedNameSpecifier::TypeSpec:
             case NestedNameSpecifier::TypeSpecWithTemplate:
-                if (const TypedefType *tt = nns->getAsType()
-                    ->getAs<TypedefType>()) {
+                if (auto tt = nns->getAsType()->getAs<TypedefType>()) {
                     record(nnsl.getLocalBeginLoc(), tt->getDecl());
-                } else if (const RecordType *rt = nns->getAsType()
-                           ->getAs<RecordType>()) {
+                } else if (auto rt = nns->getAsType()->getAs<RecordType>()) {
                     record(nnsl.getLocalBeginLoc(), rt->getDecl());
-                } else if (const TemplateSpecializationType *tst =
-                           nns->getAsType()
-                           ->getAs<TemplateSpecializationType>()) {
-                    if (TemplateDecl *decl = tst->getTemplateName()
-                        .getAsTemplateDecl()) {
-                        if (NamedDecl *templatedDecl
-                            = decl->getTemplatedDecl()) {
+                } else if (auto tst = nns->getAsType()->
+                           getAs<TemplateSpecializationType>()) {
+                    if (auto decl = tst->getTemplateName().getAsTemplateDecl()) {
+                        if (auto templatedDecl = decl->getTemplatedDecl()) {
                             record(nnsl.getLocalBeginLoc(), templatedDecl);
                         }
                     }

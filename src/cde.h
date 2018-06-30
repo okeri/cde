@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -30,8 +30,8 @@ class CDE {
     CDEProject& getProject(std::string_view path,
                            std::string_view filename) {
         auto ppath = std::string(path);
-        const auto &found = projects_.find(ppath);
-        if (found != projects_.end()) {
+        if (const auto &found = projects_.find(ppath);
+            found != projects_.end()) {
             return projects_.find(ppath)->second;
         } else {
             ack(filename);
@@ -41,13 +41,13 @@ class CDE {
 
     CDEProject& getProjectByFilename(std::string_view filename) {
         const auto& end = projects_.end();
-        const auto& found =  find_if(
-            projects_.begin(), end,
-            [filename] (const std::pair<const std::string, CDEProject> &p) {
-                return p.second.fileInProject(filename);
-            });
 
-        if  (found != end) {
+        if  (const auto& found = find_if(
+                 projects_.begin(), end,
+                 [filename] (const auto &p) {
+                     return p.second.fileInProject(filename);
+                 });
+             found != end) {
             return found->second;
         }
 
@@ -55,15 +55,16 @@ class CDE {
             fileutil::dirUp(filename));
         fileutil::deleteTrailingSep(&root);
 
-        const auto& fsfound = projects_.find(root);
-        if (fsfound != end) {
+        if (const auto& fsfound = projects_.find(root);
+            fsfound != end) {
             return fsfound->second;
         }
 
-        return projects_.emplace(std::piecewise_construct,
-                                 std::forward_as_tuple(root),
-                                 std::forward_as_tuple(root, storePath_,
-                                                       nocache_, pch_))
+        return projects_.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(root),
+            std::forward_as_tuple(root, storePath_,
+                                  nocache_, pch_))
                 .first->second;
     }
 

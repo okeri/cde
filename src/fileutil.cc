@@ -23,6 +23,9 @@
 
 #include "fileutil.h"
 
+// TODO: eliminate fileutl and replace it with small
+// amount of support functions because of std::filesystem
+
 namespace {
 
 bool endsWithLow(std::string_view str, std::string_view end) {
@@ -52,7 +55,7 @@ bool isSource(std::string_view path) {
 
 }  // namespace
 
-namespace fileutil {
+namespace [[depricated]] fileutil {
 
 namespace fs = std::filesystem;
 
@@ -66,8 +69,7 @@ bool endsWith(std::string_view str, std::string_view end,
     } else if (str.length() != len) {
         if (str.length() < len + 1) {
             return false;
-        } else if (str[str.length() - len - 1] != prev)
-        {
+        } else if (str[str.length() - len - 1] != prev) {
             return false;
         }
     }
@@ -129,9 +131,8 @@ std::string basenameNoExt(std::string_view filename) {
     } else {
         start = 0;
     }
-    return std::string(filename.substr(start,
-                                       end != std::string::npos ?
-                                       end - start : end));
+    return std::string(filename.substr(
+        start, end != std::string::npos ? end - start : end));
 }
 
 std::string extension(std::string_view filename) {
@@ -159,10 +160,17 @@ bool fileExists(std::string_view filename) {
 
 void collectFiles(std::string_view path,
                   std::forward_list<std::string> *files, bool checkExt) {
-    for (const auto& entry: fs::recursive_directory_iterator(path)) {
-        auto name = entry.path().string();
-        if (name != ".git" && name != ".svn") {
-            files->push_front(name);
+    if (fs::exists(path)) {
+        for (const auto& entry: fs::directory_iterator(path)) {
+            auto name = entry.path().filename().string();
+            auto relative = entry.path().string();
+            if (!entry.is_directory()) {
+                if (!checkExt || isSource(name)) {
+                    files->push_front(relative);
+                }
+            } else if (name != ".git" && name != ".svn") {
+                collectFiles(relative, files, checkExt);
+            }
         }
     }
 }
@@ -223,6 +231,7 @@ void mkdir(std::string_view path) {
     std::error_code ec;
     fs::create_directories(path, ec);
 }
+
 
 /** remove ugly ../../ from path */
 std::string purify(std::string_view path) {

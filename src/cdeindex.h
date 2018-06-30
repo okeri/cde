@@ -145,9 +145,8 @@ class SourceInfo {
 
     size_t fillPack(void *pack, size_t bufSize) const {
         SourceInfoPacked *data = static_cast<SourceInfoPacked*>(pack);
-        data->parent_count = parents_.size();
         data->updated_time = updated_time_;
-        if (data->parent_count != 0) {
+        if (data->parent_count = parents_.size(); data->parent_count != 0) {
             std::copy(parents_.begin(), parents_.end(), data->parents());
         }
         size_t ret = 65 + sizeof(uint32_t) * data->parent_count;

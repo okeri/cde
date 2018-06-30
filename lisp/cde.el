@@ -359,7 +359,7 @@ larger than company-idle-delay for comfort usage")
 (defun cde--filter(prefix)
   (let ((completions '()))
     (dolist (completion cde--completion-list)
-      (when (string-prefix-p prefix completion)
+      (when (or (not prefix) (string-prefix-p prefix completion))
 	(setq completions (nconc completions (list completion)))))
     (funcall cde--callback completions)))
 

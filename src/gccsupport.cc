@@ -31,24 +31,25 @@ GccSupport& GccSupport::inst() {
 void GccSupport::init(const std::string &path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
     setenv("LANG", "C" , 1);
-    FILE *pipe = popen(cmd.c_str(), "r");
-    if (pipe) {
+    if (auto pipe = popen(cmd.c_str(), "r"); pipe) {
         char buffer[0xfff];
         std::string result;
         while (fgets(buffer, sizeof(buffer), pipe)) {
-                result += buffer;
+            result += buffer;
         }
-        size_t start = result.find("#include <...> search starts here:");
-        if (start != std::string::npos) {
+
+        if (auto start = result.find("#include <...> search starts here:");
+            start != std::string::npos) {
             start += 34;  // lengh of start string
-            size_t end = result.find("End of search list.", start);
-            if (end != std::string::npos) {
+
+            if (auto end = result.find("End of search list.", start);
+                end != std::string::npos) {
                 std::unordered_set<std::string> &includes = inst().includes_;
                 strBreak(result, [&includes] (auto begin, auto end) {
                         includes.emplace(std::string("-I") +
                                          fileutil::purify(
                                              std::string(begin, end)));
-                             return true;
+                        return true;
                     }, start, end);
             } else {
                 std::cout << "(message \"" << path
