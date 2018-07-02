@@ -223,7 +223,7 @@ void CDEProject::references(std::string_view filename, uint32_t pos) {
 
     std::map<CI_KEY, uint32_t> results;
     for (const auto&[key, value] : index_->records()) {
-        if (key.pos == pos && value.file == file) {
+        if (value.pos == pos && value.file == file) {
             results[key] = value.refline;
             if (value.flags & CI_DATA::Forward) {
                 dfile = key.file;
