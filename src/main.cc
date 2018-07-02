@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     std::string gccpath(DEFAULT_GCC_PATH);
     bool pch = false;
     bool nocache = false;
-    for (unsigned i = 0; i < argc; ++i) {
+    for (auto i = 0; i < argc; ++i) {
         size_t len = strlen(argv[i]);
         if (len > 1 && argv[i][0] == '-') {
             switch (argv[i][1]) {

@@ -25,7 +25,7 @@ add_executable(cde
   src/emacsmapper.cc
   src/gccsupport.cc)
 
-set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -ffunction-sections -fdata-sections -Wcast-qual -g -fno-rtti")
+set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -ffunction-sections -fdata-sections -g -fno-rtti -Wall -pedantic")
 
 target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} fileutil stdc++fs)
 

@@ -105,7 +105,7 @@ void printQuoted(const char *str) {
 }
 
 size_t scoredAlike(std::string_view s1, const std::string &s2) {
-    for (int i = 0; i < s1.length(); ++i)
+    for (size_t i = 0; i < s1.length(); ++i)
         if (s2.length() < i || s1[i] != s2[i]) {
             return i;
         }
@@ -356,7 +356,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
 CDEIndex::Impl::Impl(std::string_view projectPath,
                      std::string_view storePath, bool pch)
-        : pchOps_(new PCHContainerOperations()), pch_(pch) {
+        :  pch_(pch), pchOps_(new PCHContainerOperations()) {
     files_.reserve(MinIndexAlloc);
     push(0, projectPath, 0, 0, nullptr);
 }
