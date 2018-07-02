@@ -205,6 +205,8 @@ class CiConsumer : public CodeCompleteConsumer {
                                     break;
                                 case CodeCompletionString::CK_LeftParen:
                                     started = true;
+                                    [[fallthrough]];
+
                                 default:
                                     std::cout << it->Text;
                                     break;
@@ -320,7 +322,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
     void preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                              bool buildMap);
-    ASTUnit *parse(uint32_t tu, uint32_t file, bool cache = true);
+    ASTUnit *parse(uint32_t tu, bool cache = true);
     std::pair<uint32_t, ASTUnit *> getParsedTU(uint32_t fid);
 
   public:
@@ -356,7 +358,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
 CDEIndex::Impl::Impl(std::string_view projectPath,
                      std::string_view storePath, bool pch)
-        :  pch_(pch), pchOps_(new PCHContainerOperations()) {
+        :  storePath_(storePath), pch_(pch), pchOps_(new PCHContainerOperations()) {
     files_.reserve(MinIndexAlloc);
     push(0, projectPath, 0, 0, nullptr);
 }
@@ -679,7 +681,7 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
 
         bool result = true;
         if (outdated || (unit == nullptr && options == ParseOptions::Force)) {
-            unit = parse(tu, fid, options != ParseOptions::Forget);
+            unit = parse(tu, options != ParseOptions::Forget);
 
             result = unit != nullptr;
             if (result && options == ParseOptions::Forget) {
@@ -817,7 +819,7 @@ void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
     }
 }
 
-ASTUnit *CDEIndex::Impl::parse(uint32_t tu, uint32_t au, bool cache) {
+ASTUnit *CDEIndex::Impl::parse(uint32_t tu, bool cache) {
     std::unique_ptr<ASTUnit> errUnit;
     ASTUnit *unit;
 

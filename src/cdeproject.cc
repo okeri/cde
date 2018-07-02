@@ -28,9 +28,9 @@
 namespace {
 
 #if DB_VERSION_MAJOR > 5
-int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
+int BDBKeyCmp(DB *, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
 #else
-int BDBKeyCmp(DB *db, const DBT *dbt1, const DBT *dbt2) {
+int BDBKeyCmp(DB *, const DBT *dbt1, const DBT *dbt2) {
 #endif
     if (dbt1->size == dbt2->size) {
          if (dbt1->size == sizeof(uint32_t)) {
