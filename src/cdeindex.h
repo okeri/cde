@@ -46,7 +46,7 @@ struct CI_KEY {
     uint32_t pos;
 
     bool operator<(const CI_KEY &rhs) const {
-	if (file == rhs.file) {
+        if (file == rhs.file) {
             return (pos < rhs.pos);
         } else {
             return (file < rhs.file);
@@ -106,11 +106,11 @@ class SourceInfo {
         uint32_t updated_time;
         uint32_t parent_count;
 
-	uint32_t *parents() {
+        uint32_t *parents() {
             return reinterpret_cast<uint32_t*>(this) + 2;
         }
 
-	char *filename() {
+        char *filename() {
             return reinterpret_cast<char *>(
                 parents() + parent_count);
         }

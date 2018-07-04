@@ -248,7 +248,7 @@ class CiConsumer : public CodeCompleteConsumer {
 // CDEIndex::Impl declaration
 
 class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
-    friend class RecursiveASTVisitor<CDEIndex::Impl>; //FIXME
+    friend class RecursiveASTVisitor<CDEIndex::Impl>;
 
     // assume some average project has 512 < files < 1024.
     enum {
@@ -358,7 +358,8 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
 CDEIndex::Impl::Impl(std::string_view projectPath,
                      std::string_view storePath, bool pch)
-        :  storePath_(storePath), pch_(pch), pchOps_(new PCHContainerOperations()) {
+        :  storePath_(storePath), pch_(pch),
+           pchOps_(new PCHContainerOperations()) {
     files_.reserve(MinIndexAlloc);
     push(0, projectPath, 0, 0, nullptr);
 }
@@ -474,11 +475,13 @@ uint32_t CDEIndex::Impl::getFile(std::string_view filename, uint32_t parent) {
     }
 }
 
-uint32_t CDEIndex::Impl::getFile(const llvm::StringRef &filename, uint32_t parent) {
+uint32_t CDEIndex::Impl::getFile(const llvm::StringRef &filename,
+                                 uint32_t parent) {
     return getFile(std::string_view(std::string(filename)), parent);
 }
 
-const SourceInfo* CDEIndex::Impl::getDominatedParent(const SourceInfo * si) const {
+const SourceInfo* CDEIndex::Impl::getDominatedParent(
+    const SourceInfo * si) const {
     const SourceInfo *token = si;
     while (token->parents_.size() != 0 && token->args_.empty()) {
         token = &files_[token->parents_[0]];
@@ -500,8 +503,8 @@ bool CDEIndex::Impl::haveNostdinc(uint32_t file) const {
     return false;
 }
 
-void CDEIndex::Impl::copyArgsToClangArgs(uint32_t file,
-                                         std::vector<const char*> *clang_args) const {
+void CDEIndex::Impl::copyArgsToClangArgs(
+    uint32_t file, std::vector<const char*> *clang_args) const {
     const std::vector<std::string> &arguments = args(file);
     for (const auto &s : arguments) {
         clang_args->push_back(s.c_str());
@@ -690,7 +693,8 @@ bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
         }
         if (options == ParseOptions::Force) {
             preprocessTUforFile(unit, fid, true);
-            handleDiagnostics(tu, unit->getMainFileName(), unit->stored_diag_begin(),
+            handleDiagnostics(tu, unit->getMainFileName(),
+                              unit->stored_diag_begin(),
                               unit->stored_diag_end(), false);
         }
         return result;
@@ -758,7 +762,6 @@ void CDEIndex::Impl::completion(uint32_t fid,
 // because of relocations in preprocessTUforFile->getFile->push
 void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
                                          bool buildMap) {
-
     auto pp = unit->getPreprocessor().getPreprocessingRecord();
     if (pp == nullptr) {
         std::cout << "(message \"warning: preprocessor inaccessible\")"
@@ -847,7 +850,6 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, bool cache) {
         // We are not sure about language, so appending gcc c++ system include
         // paths to the end seems ok.
         if (!haveNostdinc(tu)) {
-
             // clang include path
             args.push_back(getClangIncludeArg());
 
@@ -1052,7 +1054,8 @@ uint32_t CDEIndex::Impl::getLoc(const SourceLocation &location,
     return INVALID;
 }
 
-bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc nnsl) {
+bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(
+    NestedNameSpecifierLoc nnsl) {
     while (nnsl) {
         NestedNameSpecifier *nns = nnsl.getNestedNameSpecifier();
         switch (nns->getKind()) {

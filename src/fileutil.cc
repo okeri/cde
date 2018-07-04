@@ -40,7 +40,7 @@ bool endsWithLow(std::string_view str, std::string_view end) {
 }
 
 bool isSource(std::string_view path) {
-    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" ,""};
+    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" , ""};
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;
@@ -73,11 +73,35 @@ std::string join(std::string_view first, std::string_view second) {
 }
 
 std::string joinp(std::string_view first, std::string_view second) {
-    return (fs::path(first) / fs::path(second)).lexically_normal().string();
+    return (fs::path(purify(first)) / fs::path(purify(second))).string();
 }
 
+// reverted from lexically_normal because the last has strange behaviour
 std::string purify(std::string_view path) {
-    return fs::path(path).lexically_normal().string();
+    std::string ret(path);
+
+    size_t tokd, tok = ret.rfind("/..");
+    while (tok != std::string::npos) {
+        size_t lev = 0;
+        tokd = ret.rfind('/', tok - 1);
+        while (tokd != std::string::npos && ret[tokd + 1] == '.'
+               && ret[tokd + 2] == '.') {
+            lev++;
+            tokd = ret.rfind('/', tokd - 1);
+        }
+
+        while (tokd != std::string::npos && lev > 0) {
+            tokd = ret.rfind('/', tokd - 1);
+            lev--;
+        }
+
+        if (tokd == std::string::npos) {
+            return std::string(path);
+        }
+        ret = ret.erase(tokd, tok - tokd + 3);
+        tok = ret.rfind("/..");
+    }
+    return ret;
 }
 
 std::string dirUp(std::string_view path) {

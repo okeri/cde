@@ -143,7 +143,8 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                         }
 
                         if (filename[0] != '/') {
-                            filename = fileutil::joinp(directory->value.GetString(), filename);
+                            filename = fileutil::joinp(
+                                directory->value.GetString(), filename);
                         }
 
                         std::vector<std::string> args;

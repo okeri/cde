@@ -94,7 +94,8 @@ class CDE {
                     const std::string &filename,
                     const std::string &prefix, uint32_t line,
                     uint32_t column) {
-        getProject(projectpath, filename).completion(filename, prefix, line, column);
+        getProject(projectpath, filename).completion(
+            filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde

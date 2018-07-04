@@ -148,10 +148,8 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
-
     // quit
     cde.send("Q\n");
     BOOST_CHECK_EQUAL(cde.recv(),
                       "(setq cde--process nil)\n");
-
 }
