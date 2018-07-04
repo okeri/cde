@@ -69,7 +69,6 @@ int main(int argc, char *argv[]) {
         GccSupport::init(gccpath);
     }
 
-    fileutil::deleteTrailingSep(&path);
     fileutil::mkdir(path);
 
     CDE cde(path, nocache, pch);

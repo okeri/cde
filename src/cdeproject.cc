@@ -60,19 +60,17 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                        bool nocache, bool pch)
         : db_(NULL, 0), nocache_(nocache) {
     // init database
-    std::string dbpath(std::string(store) + SEPARATOR);
-    size_t offset = dbpath.length();
-    dbpath += projectPath;
-
-    auto manglePath = [] (auto b, auto e) {
-        for (auto it = b; it != e; ++it) {
-            if (*it == SEPARATOR) {
-                *it = '!';
+    auto manglePath = [] (auto &s) {
+        for (auto &it : s) {
+            if (it == '/') {
+                it = '!';
             }
         }
     };
+    std::string mangled(projectPath);
+    manglePath(mangled);
+    auto dbpath = fileutil::join(store, mangled);
 
-    manglePath(begin(dbpath) + offset, end(dbpath));
     index_ = std::make_unique<CDEIndex>(projectPath, dbpath, pch);
     dbpath += ".cache";
     db_.set_bt_compare(BDBKeyCmp);
@@ -111,12 +109,12 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
     }
 
     // load proj values
-    if (std::ifstream f(std::string(projectPath) + SEPARATOR + easy_file_id); f) {
+    if (std::ifstream f(fileutil::join(projectPath, easy_file_id)); f) {
         std::string content((std::istreambuf_iterator<char>(f)),
                             std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
     } else {
-        f.open(std::string(projectPath) + SEPARATOR + ccj_file_id);
+        f.open(fileutil::join(projectPath, ccj_file_id));
         if (f) {
             std::string content((std::istreambuf_iterator<char>(f)),
                                 std::istreambuf_iterator<char>());
@@ -145,9 +143,7 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                         }
 
                         if (filename[0] != '/') {
-                            std::string dirname(directory->value.GetString());
-                            fileutil::addTrailingSep(&dirname);
-                            filename = fileutil::purify(dirname + filename);
+                            filename = fileutil::joinp(directory->value.GetString(), filename);
                         }
 
                         std::vector<std::string> args;
@@ -185,7 +181,7 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
 
 
 std::string CDEProject::findProjectRoot(std::string_view projectPath) {
-    for (std::string root = std::string(projectPath); root != "";
+    for (std::string root = std::string(projectPath); root != "/";
          root = fileutil::dirUp(root)) {
         if (fileutil::fileExists(root + easy_file_id) ||
             fileutil::fileExists(root + ccj_file_id)) {
@@ -272,9 +268,7 @@ void CDEProject::findfile(std::string_view filename,
                 index_->includes(pfile, fileutil::dirUp(parent));
 
         for (const auto& include_path : includes) {
-            std::string test = include_path;
-            fileutil::addTrailingSep(&test);
-            test += filename;
+            std::string test = fileutil::join(include_path, filename);
             if (fileutil::fileExists(test)) {
                 std::cout << "(find-file \"" << test << "\")" << std::endl;
                 return;
@@ -328,9 +322,7 @@ void CDEProject::swapSrcHdr(std::string_view filename) {
                     index_->includes(file, fileutil::dirUp(filename));
 
             for (const auto& include_path : includes) {
-                test = include_path;
-                fileutil::addTrailingSep(&test);
-                test += base;
+                test = fileutil::join(include_path, base);
                 for (unsigned i = 1; exts[extIter][i] != ""; ++i) {
                     std::string testfile = test + exts[extIter][i];
                     if (fileutil::fileExists(testfile)) {

@@ -17,17 +17,17 @@ add_definitions(-D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D
 
 include_directories(SYSTEM "src" "src/rapidjson/include" ${BDB_INCLUDE_DIR} ${CLANG_INCLUDE_DIR})
 
-add_library(fileutil src/fileutil.cc)
 add_executable(cde
   src/main.cc
   src/cdeproject.cc
   src/cdeindex.cc
   src/emacsmapper.cc
-  src/gccsupport.cc)
+  src/gccsupport.cc
+  src/fileutil.cc)
 
 set_property(TARGET cde PROPERTY COMPILE_FLAGS "-fomit-frame-pointer -fvisibility-inlines-hidden -ffunction-sections -fdata-sections -g -fno-rtti -Wall -pedantic -Wextra -Wunreachable-code")
 
-target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} fileutil stdc++fs)
+target_link_libraries(cde ${BDB_LIBRARIES} ${CLANG_LIBRARIES} ${LLVM_LIBRARIES} stdc++fs)
 
 if (INCLUDE_TESTS)
   enable_testing()

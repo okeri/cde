@@ -20,6 +20,7 @@
 
 #include <fstream>
 #include <chrono>
+
 #include <boost/test/unit_test.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -27,16 +28,10 @@
 #include "externalprocess.h"
 
 BOOST_AUTO_TEST_CASE(TestExternalSimple) {
-    // init path
-    std::string path(boost::filesystem::current_path().string());
-    path += boost::filesystem::path::preferred_separator;
-
     // init executable path
-    std::string cdepath("..");
-    cdepath += boost::filesystem::path::preferred_separator;
-    cdepath += "cde";
-
-
+    auto ppath = boost::filesystem::path(ExternalProcess::selfPath()).parent_path();
+    auto cdepath = ppath.parent_path() / boost::filesystem::path("cde");
+    auto path = ppath.string() + boost::filesystem::path::preferred_separator;
     std::string srcfilename(path + "simple" +
                             boost::filesystem::path::preferred_separator +
                             "simple.cpp");
@@ -93,12 +88,6 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cde.send(std::string("A ") + hdrfilename + "\n");
     BOOST_CHECK_EQUAL(cde.recv(), ack);
 
-    // FIXME: in clang 4.9+ there some issues with PreprocessingRecord.getSkippedRanges()
-    // BOOST_CHECK_EQUAL(cde.recv(), std::string("(cde--hideif \"") +
-    //                   hdrfilename + "\" '((21 22)))\n");
-
-    // in case index is not restored, diagnostics will show #pragma once
-    // warning here
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
     // hdr/src.

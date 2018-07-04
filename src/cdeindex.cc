@@ -457,7 +457,7 @@ uint32_t CDEIndex::Impl::findFile(std::string_view filename) {
     if (auto it = find_if(
             files_.begin(), end,
             [filename] (const SourceInfo &si) {
-                return fileutil::endsWith(si.filename_, filename, SEPARATOR);
+                return fileutil::hasTail(si.filename_, filename);
             }); it != end) {
         return it->fileId_;
     }
@@ -1094,7 +1094,7 @@ const FileEntry *CDEIndex::Impl::feFromLocation(const SourceLocation &location) 
 
 
 std::string CDEIndex::Impl::getPCHFilename(uint32_t n) {
-    return storePath_ + SEPARATOR + std::to_string(n) + ".pch";
+    return fileutil::join(storePath_, std::to_string(n) + ".pch");
 }
 
 

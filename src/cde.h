@@ -52,7 +52,6 @@ class CDE {
 
         std::string root = CDEProject::findProjectRoot(
             fileutil::dirUp(filename));
-        fileutil::deleteTrailingSep(&root);
 
         if (const auto& fsfound = projects_.find(root);
             fsfound != end) {

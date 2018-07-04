@@ -23,22 +23,15 @@
 #include <string_view>
 #include <forward_list>
 
-#ifdef _WIN32
-#define SEPARATOR                      '\\'
-#else
-#define SEPARATOR                       '/'
-#endif
-
-#define INVALID                  0xffffffff
+enum {INVALID = 0xffffffff};
 
 namespace fileutil {
 
 enum {MAX_DISP_LEN = 80};
 
-bool endsWith(std::string_view str, std::string_view end, const char prev = 0);
-bool isHeader(std::string_view path);
-void deleteTrailingSep(std::string *path);
-void addTrailingSep(std::string *path);
+bool hasTail(std::string_view str, std::string_view end);
+std::string join(std::string_view first, std::string_view second);
+std::string joinp(std::string_view first, std::string_view second);
 std::string dirUp(std::string_view path);
 std::string purify(std::string_view path);
 std::string basenameNoExt(std::string_view filename);

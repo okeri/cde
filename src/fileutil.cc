@@ -23,9 +23,6 @@
 
 #include "fileutil.h"
 
-// TODO: eliminate fileutl and replace it with small
-// amount of support functions because of std::filesystem
-
 namespace {
 
 bool endsWithLow(std::string_view str, std::string_view end) {
@@ -52,97 +49,49 @@ bool isSource(std::string_view path) {
     return false;
 }
 
-
 }  // namespace
 
-namespace [[depricated]] fileutil {
+namespace fileutil {
 
 namespace fs = std::filesystem;
 
-bool endsWith(std::string_view str, std::string_view end,
-              const char prev) {
-    size_t len = end.length();
-    if (prev == 0) {
-        if (str.length() < len) {
-            return false;
-        }
-    } else if (str.length() != len) {
-        if (str.length() < len + 1) {
-            return false;
-        } else if (str[str.length() - len - 1] != prev) {
-            return false;
-        }
+bool hasTail(std::string_view str, std::string_view tail) {
+    size_t len = tail.length();
+    if (str.length() < len) {
+        return false;
     }
-
     for (size_t i = 0, u = str.length() - len; i < len; ++i, ++u) {
-        if (end[i] != str[u]) {
+        if (tail[i] != str[u]) {
             return false;
         }
     }
     return true;
 }
 
-bool isHeader(std::string_view path) {
-    static std::string exts[] = {".h", ".hh", ".hpp", ".hxx", ".h++", ""};
-    if (path.find(".") == std::string::npos) {
-        return true;
-    }
-    for (int i = 0; exts[i] != ""; ++i) {
-        if (endsWithLow(path, exts[i])) {
-            return true;
-        }
-    }
-    return false;
+std::string join(std::string_view first, std::string_view second) {
+    return (fs::path(first) / fs::path(second)).string();
 }
 
-void deleteTrailingSep(std::string *path) {
-    auto it = std::end(*path) - 1;
-    const auto &begin = std::begin(*path);
-    while (*it == SEPARATOR && it != begin) {
-        path->erase(it);
-        --it;
-    }
+std::string joinp(std::string_view first, std::string_view second) {
+    return (fs::path(first) / fs::path(second)).lexically_normal().string();
 }
 
-void addTrailingSep(std::string *path) {
-    const auto &it = end(*path) - 1;
-    if (*it != SEPARATOR) {
-        *path += SEPARATOR;
-    }
+std::string purify(std::string_view path) {
+    return fs::path(path).lexically_normal().string();
 }
 
 std::string dirUp(std::string_view path) {
-    size_t len = path.length();
-    if (len > 1) {
-        size_t pos = path.rfind(SEPARATOR, path[len - 1] == SEPARATOR ?
-                                len - 2 : std::string::npos);
-        if (pos != std::string::npos) {
-            return std::string(path.substr(0, pos + 1));
-        }
-    }
-    return "";
+    return fs::path(path).parent_path().string();
 }
 
 std::string basenameNoExt(std::string_view filename) {
-    size_t start = filename.rfind(SEPARATOR);
-    size_t end = filename.rfind(".");
-    if (start != std::string::npos) {
-        start++;
-    } else {
-        start = 0;
-    }
-    return std::string(filename.substr(
-        start, end != std::string::npos ? end - start : end));
+    auto basename = fs::path(filename).filename().string();
+    size_t end = basename.rfind(".");
+    return basename.substr(0, end);
 }
 
 std::string extension(std::string_view filename) {
-    size_t sep = filename.rfind(SEPARATOR);
-    size_t pos = filename.rfind(".");
-    if ((sep < pos || sep == std::string::npos) &&
-        pos != std::string::npos) {
-        return std::string(filename.substr(pos));
-    }
-    return "";
+    return fs::path(filename).extension();
 }
 
 uint32_t fileTime(std::string_view filename) {
@@ -232,33 +181,5 @@ void mkdir(std::string_view path) {
     fs::create_directories(path, ec);
 }
 
-
-/** remove ugly ../../ from path */
-std::string purify(std::string_view path) {
-    // TODO: Windows version ?
-    std::string ret(path);
-    size_t tokd, tok = ret.rfind("/..");
-    while (tok != std::string::npos) {
-        size_t lev = 0;
-        tokd = ret.rfind(SEPARATOR, tok - 1);
-        while (tokd != std::string::npos && ret[tokd + 1] == '.'
-               && ret[tokd + 2] == '.') {
-            lev++;
-            tokd = ret.rfind(SEPARATOR, tokd - 1);
-        }
-
-        while (tokd != std::string::npos && lev > 0) {
-            tokd = ret.rfind(SEPARATOR, tokd - 1);
-            lev--;
-        }
-
-        if (tokd == std::string::npos) {
-            return std::string(path);
-        }
-        ret = ret.erase(tokd, tok - tokd + 3);
-        tok = ret.rfind("/..");
-    }
-    return ret;
-}
 
 }  // namespace fileutil
