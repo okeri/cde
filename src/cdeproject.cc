@@ -180,18 +180,16 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
     }
 }
 
-
 std::string CDEProject::findProjectRoot(std::string_view projectPath) {
     for (std::string root = std::string(projectPath); root != "/";
          root = fileutil::dirUp(root)) {
-        if (fileutil::fileExists(root + easy_file_id) ||
-            fileutil::fileExists(root + ccj_file_id)) {
+        if (fileutil::fileExists(fileutil::join(root, easy_file_id)) ||
+            fileutil::fileExists(fileutil::join(root, ccj_file_id))) {
             return root;
         }
     }
     return std::string(projectPath);
 }
-
 
 void CDEProject::definition(std::string_view filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
