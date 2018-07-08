@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ class CDEProject {
 
   public:
     CDEProject(std::string_view projectPath,
-               std::string_view store, bool nocache, bool pch);
+               std::string_view store, bool nocache, bool pch) noexcept;
     ~CDEProject();
     bool fileInProject(std::string_view filename) const;
     void scanProject();

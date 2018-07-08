@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <iostream>
+#include <string_view>
 #include "strbreak.h"
 #include "gccsupport.h"
 #include "fileutil.h"
@@ -37,10 +38,10 @@ void GccSupport::init(const std::string &path) {
         while (fgets(buffer, sizeof(buffer), pipe)) {
             result += buffer;
         }
-
-        if (auto start = result.find("#include <...> search starts here:");
+        constexpr std::string_view startTag = "#include <...> search starts here:";
+        if (auto start = result.find(startTag);
             start != std::string::npos) {
-            start += 34;  // lengh of start string
+            start += startTag.length();
 
             if (auto end = result.find("End of search list.", start);
                 end != std::string::npos) {

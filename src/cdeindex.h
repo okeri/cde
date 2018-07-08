@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -183,7 +183,7 @@ class CDEIndex {
 
   public:
     CDEIndex(std::string_view projectPath, std::string_view storePath,
-             bool pch);
+             bool pch) noexcept;
     ~CDEIndex();
     void set(CI_KEY *key, CI_DATA *data);
     const std::unordered_map<CI_KEY, CI_DATA> &records() const;

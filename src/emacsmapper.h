@@ -22,7 +22,8 @@
 #include "single.h"
 
 class EmacsMapper : public Single {
-    using RemappedFiles = std::map<std::string, std::pair<std::string, uint32_t>>;
+    using RemappedFiles = std::map<std::string,
+                                   std::pair<std::string, uint32_t>>;
 
     RemappedFiles mapped_;
 

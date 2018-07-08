@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -115,7 +115,7 @@ size_t scoredAlike(std::string_view s1, const std::string &s2) {
 }  // namespace
 
 // CiConsumer class
-class CiConsumer : public CodeCompleteConsumer {
+class CiConsumer final: public CodeCompleteConsumer {
     std::shared_ptr<GlobalCodeCompletionAllocator> ccAllocator_;
     CodeCompletionTUInfo info_;
     IntrusiveRefCntPtr<DiagnosticOptions> diagOpts_;
@@ -166,13 +166,13 @@ class CiConsumer : public CodeCompleteConsumer {
         bool hasFilteredResults = false;
         // Print the results.
         for (unsigned i = 0; i != numResults; ++i) {
-            CodeCompletionString *completion =
+            CodeCompletionString *completions =
                     results[i].CreateCodeCompletionString(
                         sema, context, info_.getAllocator(), info_,
                         includeBriefComments());
 
-            if (!completion->getAvailability()) {
-                std::string_view entry = completion->getTypedText();
+            if (!completions->getAvailability()) {
+                std::string_view entry = completions->getTypedText();
                 if (entry != "" && entry.substr(0, 8) != "operator" &&
                     entry[0] != '~') {
                     if (prefix_ == "" ||
@@ -184,9 +184,8 @@ class CiConsumer : public CodeCompleteConsumer {
                         std::cout << "(\"";
                         bool started = false;
                         size_t annoLen = 0, resultLen = 0;
-                        for (auto it = completion->begin();
-                             it != completion->end(); ++it) {
-                            switch (it->Kind) {
+                        for (const auto &completion : *completions) {
+                            switch (completion.Kind) {
                                 case CodeCompletionString::CK_Optional:
                                     break;
                                 case CodeCompletionString::CK_VerticalSpace:
@@ -194,41 +193,43 @@ class CiConsumer : public CodeCompleteConsumer {
                                     break;
                                 case CodeCompletionString::CK_Text:
                                 case CodeCompletionString::CK_Informative:
-                                    std::cout << it->Text;
+                                    std::cout << completion.Text;
                                     if (resultLen != 0 && !started) {
-                                        resultLen += strlen(it->Text);
+                                        resultLen += strlen(completion.Text);
                                     }
                                     break;
                                 case CodeCompletionString::CK_ResultType:
-                                    std::cout << it->Text << " ";
-                                    resultLen += strlen(it->Text) + 1;
+                                    std::cout << completion.Text << " ";
+                                    resultLen += strlen(completion.Text) + 1;
                                     break;
                                 case CodeCompletionString::CK_LeftParen:
                                     started = true;
                                     [[fallthrough]];
 
                                 default:
-                                    std::cout << it->Text;
+                                    std::cout << completion.Text;
                                     break;
                             }
 
                             if (started) {
-                                if (it->Kind !=
+                                if (completion.Kind !=
                                     CodeCompletionString::CK_VerticalSpace &&
-                                    it->Kind !=
+                                    completion.Kind !=
                                     CodeCompletionString::CK_Optional) {
-                                    annoLen += strlen(it->Text);
+                                    annoLen += strlen(completion.Text);
                                 }
                             }
                         }
-                        if (completion->getBriefComment() != nullptr) {
+
+                        auto comment = completions->getBriefComment();
+                        if (comment != nullptr) {
                             std::cout << "  // ";
-                            printQuoted(completion->getBriefComment());
+                            printQuoted(comment);
                         }
                         std::cout << "\" " << resultLen << " ";
                         resultLen += entry.length();
                         std::cout << resultLen;
-                        if (completion->getBriefComment() != nullptr) {
+                        if (comment != nullptr) {
                             resultLen += annoLen;
                             std::cout << " " << resultLen;
                         }
@@ -247,7 +248,7 @@ class CiConsumer : public CodeCompleteConsumer {
 
 // CDEIndex::Impl declaration
 
-class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
+class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
     friend class RecursiveASTVisitor<CDEIndex::Impl>;
 
     // assume some average project has 512 < files < 1024.
@@ -261,7 +262,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
     std::vector<SourceInfo> files_;
     std::map<size_t, size_t> hfilenames_;
-    std::hash<std::string> hashStr;
+    std::hash<std::string_view> hashStr;
     std::unordered_map<CI_KEY, CI_DATA> records_;
     ASTContext *context_;
     SourceManager *sm_;
@@ -327,7 +328,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 
   public:
     Impl(std::string_view projectPath, std::string_view storePath,
-         bool pch);
+         bool pch) noexcept;
     ~Impl();
     void set(CI_KEY *key, CI_DATA *data);
     const std::unordered_map<CI_KEY, CI_DATA> &records() const;
@@ -357,7 +358,7 @@ class CDEIndex::Impl : public RecursiveASTVisitor<CDEIndex::Impl> {
 // CDEIndex::Impl implementation
 
 CDEIndex::Impl::Impl(std::string_view projectPath,
-                     std::string_view storePath, bool pch)
+                     std::string_view storePath, bool pch) noexcept
         :  storePath_(storePath), pch_(pch),
            pchOps_(new PCHContainerOperations()) {
     files_.reserve(MinIndexAlloc);
@@ -495,12 +496,10 @@ const std::vector<std::string> &CDEIndex::Impl::args(uint32_t file) const {
 
 bool CDEIndex::Impl::haveNostdinc(uint32_t file) const {
     const std::vector<std::string> &arguments = args(file);
-    for (const auto &s : arguments) {
-        if (s == "-nostdinc") {
-            return true;
-        }
-    }
-    return false;
+    return std::find_if(
+        arguments.begin(), arguments.end(), [] (const auto& arg) {
+            return arg == "-nostdinc";
+        }) != arguments.end();
 }
 
 void CDEIndex::Impl::copyArgsToClangArgs(
@@ -512,7 +511,7 @@ void CDEIndex::Impl::copyArgsToClangArgs(
 }
 
 SourceInfo* CDEIndex::Impl::find(std::string_view filename) {
-    auto it = hfilenames_.find(hashStr(std::string(filename)));
+    auto it = hfilenames_.find(hashStr(filename));
     return it != hfilenames_.end() ? &files_[it->second] : nullptr;
 }
 
@@ -736,7 +735,6 @@ void CDEIndex::Impl::completion(uint32_t fid,
     CodeCompleteOptions opts;
     opts.IncludeBriefComments = 1;
     opts.IncludeMacros = 1;
-    opts.IncludeCodePatterns = 0;
     CiConsumer consumer(opts, &unit->getFileManager(), prefix);
 
     SmallVector<ASTUnit::RemappedFile, 4> remappedFiles;
@@ -1154,7 +1152,7 @@ void CDEIndex::Impl::loadPCHData() {
 
 // CDEIndex implementation
 CDEIndex::CDEIndex(std::string_view projectPath, std::string_view storePath,
-                   bool pch)
+                   bool pch) noexcept
         : pImpl_(std::make_unique<CDEIndex::Impl>(projectPath, storePath, pch)) {
 }
 

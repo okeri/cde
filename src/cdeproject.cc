@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -50,14 +50,14 @@ int BDBKeyCmp(DB *, const DBT *dbt1, const DBT *dbt2) {
     return dbt1->size - dbt2->size;
 }
 
-static const char easy_file_id[] = ".clang_complete";
-static const char ccj_file_id[] = "compile_commands.json";
+const char easy_file_id[] = ".clang_complete";
+const char ccj_file_id[] = "compile_commands.json";
 
 }  // namespace
 
 
 CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
-                       bool nocache, bool pch)
+                       bool nocache, bool pch) noexcept
         : db_(NULL, 0), nocache_(nocache) {
     // init database
     auto manglePath = [] (auto &s) {

@@ -1,6 +1,6 @@
 /*
   CDE - C/C++ development environment for emacs
-  Copyright (C) 2016 Oleg Keri
+  Copyright (C) 2016-2018 Oleg Keri
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@ bool endsWithLow(std::string_view str, std::string_view end) {
 }
 
 bool isSource(std::string_view path) {
-    static std::string exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" , ""};
+    constexpr std::string_view exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" , ""};
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;
@@ -204,6 +204,5 @@ void mkdir(std::string_view path) {
     std::error_code ec;
     fs::create_directories(path, ec);
 }
-
 
 }  // namespace fileutil
