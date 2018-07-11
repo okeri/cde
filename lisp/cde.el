@@ -281,17 +281,17 @@ larger than company-idle-delay for comfort usage")
 
 (add-hook 'kill-emacs-query-functions 'cde-quit)
 
-(defun cde--bring-process(&optional process &optional event)
+(defun cde--bring-process(&optional process event)
   (let ((process-connection-type nil)
-	(process-adaptive-read-buffering nil))
+  	(process-adaptive-read-buffering nil))
     (setq cde--process
-	  (apply 'start-process (nconc (list cde--process-name
-					     cde--process-buffer)
-				       (split-string cde-command))))
+    	  (apply 'start-process (nconc (list cde--process-name
+    					     cde--process-buffer)
+    				       (split-string cde-command))))
 
-      (set-process-sentinel cde--process 'cde--bring-process)
-      (set-process-query-on-exit-flag cde--process nil)
-      (set-process-filter cde--process 'cde--handle-output)))
+     (set-process-sentinel cde--process 'cde--bring-process)
+     (set-process-query-on-exit-flag cde--process nil)
+     (set-process-filter cde--process 'cde--handle-output)))
 
 (defun cde--init()
   (unless cde--process
@@ -437,7 +437,7 @@ larger than company-idle-delay for comfort usage")
     (setq-local cde--buffer-mapped t)))
 
 
-(defun cde--error-rep(marker &optional errors &optional regulars &optional links)
+(defun cde--error-rep(marker &optional errors regulars links)
   (cde--unlock t)
   (let ((project cde--project))
     (dolist (buf (buffer-list))
