@@ -246,14 +246,15 @@ larger than company-idle-delay for comfort usage")
     (cde--check-handler buffer-file-name)))
 
 (defun cde--check-handler(buffer)
-  (when (and cde-mode buffer)
+  (when buffer
     (if (not cde--lock-guard)
 	(with-current-buffer (get-file-buffer buffer)
-	  (cde--check-map)
-	  (setq cde--check-timer nil)
-	  (cde--lock t)
-	  (cde--send-command (concat "B " cde--project " "
-				     buffer "\n")))
+	  (when cde-mode
+	    (cde--check-map)
+	    (setq cde--check-timer nil)
+	    (cde--lock t)
+	    (cde--send-command (concat "B " cde--project " "
+				       buffer "\n"))))
       (setq-local cde--check-timer
       	    (run-at-time cde-check nil #'cde--check-handler buffer)))))
 
@@ -282,6 +283,10 @@ larger than company-idle-delay for comfort usage")
 (add-hook 'kill-emacs-query-functions 'cde-quit)
 
 (defun cde--bring-process(&optional process event)
+  (when process
+    (message "CDE process crashed")
+    (cde--unlock nil))
+
   (let ((process-connection-type nil)
   	(process-adaptive-read-buffering nil))
     (setq cde--process
@@ -442,10 +447,9 @@ larger than company-idle-delay for comfort usage")
   (let ((project cde--project))
     (dolist (buf (buffer-list))
       (with-current-buffer buf
-	(when (and cde-mode (equal project cde--project))
-	  (when (eq cde--diags-marker marker)
+	(when (and cde-mode (eq cde--diags-marker marker))
 	    (setq-local cde--diags nil)
-	    (remove-overlays nil nil 'cde--diag t))))))
+	    (remove-overlays nil nil 'cde--diag t)))))
   (if errors
       (dolist (pos regulars)
 	(let* ((file (nth 0 pos))
