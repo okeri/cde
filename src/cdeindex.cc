@@ -264,7 +264,6 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
     std::map<size_t, size_t> hfilenames_;
     std::hash<std::string_view> hashStr;
     std::unordered_map<CI_KEY, CI_DATA> records_;
-    ASTContext *context_;
     SourceManager *sm_;
     std::shared_ptr<PCHContainerOperations> pchOps_;
     std::map<uint32_t, std::unique_ptr<ASTUnit>> units_;
@@ -661,6 +660,7 @@ std::pair<uint32_t, ASTUnit *> CDEIndex::Impl::getParsedTU(uint32_t fid) {
     return std::make_pair(tuId, parse(tuId, fid));
 }
 
+[[nodiscard]]
 bool CDEIndex::Impl::parse(uint32_t fid, ParseOptions options) {
     if (options != ParseOptions::Recursive) {
         uint32_t tu = getAnyTU(fid);
@@ -871,9 +871,10 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, bool cache) {
             "",
             false, true, remappedFiles,
             false, cache ? 1U : 0U, TU_Complete,
-            true, true, true, false,
+            false, // Cache code completion
+            true, true, false,
 #if (CLANG_VERSION_MAJOR > 4)
-            false,
+            false,  // single file parse
 #endif
             true, false,
             pchOps_->getRawReader().getFormat(),
@@ -900,8 +901,7 @@ ASTUnit *CDEIndex::Impl::parse(uint32_t tu, bool cache) {
     }
 
     // traverse ast tree
-    context_ = &unit->getASTContext();
-    TraverseDecl(context_->getTranslationUnitDecl());
+    TraverseDecl(unit->getASTContext().getTranslationUnitDecl());
 
     find(tu)->setTime(time(NULL));
     return unit;
