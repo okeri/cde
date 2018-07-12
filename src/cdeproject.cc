@@ -346,6 +346,8 @@ void CDEProject::acknowledge(std::string_view filename) {
               << index_->projectPath() << "\")"
          << std::endl;
     index_->preprocess(index_->getFile(filename));
+    std::cout << "(setcar (cdr (assq 'cde-mode minor-mode-alist)) \" cde\")"
+            << std::endl;
 }
 
 void CDEProject::scanProject() {

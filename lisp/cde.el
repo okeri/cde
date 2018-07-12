@@ -167,7 +167,7 @@ larger than company-idle-delay for comfort usage")
       (process-send-string cde--process "Q\n"))
   t)
 
-(define-minor-mode cde-mode "cde"  nil  " cde" nil :group 'cde
+(define-minor-mode cde-mode "cde"  nil " ?cde" nil :group 'cde
   (if cde-mode (cde--init) (cde--deinit)))
 
 (defun company-cde(command &optional arg &rest ignored)
