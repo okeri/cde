@@ -167,7 +167,7 @@ larger than company-idle-delay for comfort usage")
       (process-send-string cde--process "Q\n"))
   t)
 
-(define-minor-mode cde-mode "cde"  nil " ?cde" nil :group 'cde
+(define-minor-mode cde-mode "cde"  nil " cde[processing...]" nil :group 'cde
   (if cde-mode (cde--init) (cde--deinit)))
 
 (defun company-cde(command &optional arg &rest ignored)
@@ -314,6 +314,7 @@ larger than company-idle-delay for comfort usage")
     (add-hook 'company-completion-started-hook 'cde--lock)
     (add-hook 'company-completion-cancelled-hook 'cde--unlock)
     (add-hook 'company-completion-finished-hook 'cde--unlock))
+  (setcar (cdr (assq 'cde-mode minor-mode-alist)) " cde[processing...]")
   (cde--send-command (concat "A " buffer-file-name "\n")))
 
 (defun cde--unlock(dummy)
