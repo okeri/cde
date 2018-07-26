@@ -191,6 +191,19 @@ std::string CDEProject::findProjectRoot(std::string_view projectPath) {
     return std::string(projectPath);
 }
 
+void CDEProject::info(std::string_view filename, uint32_t pos) {
+    CI_KEY ref({index_->getFile(filename), pos});
+    index_->parse(ref.file, CDEIndex::ParseOptions::Normal);
+    if (const auto& defIt = index_->records().find(ref);
+        defIt != index_->records().end()) {
+        const CI_DATA &def = defIt->second;
+        std::cout << "(message "
+                  << std::quoted(fileutil::findLineInFile(
+                      index_->fileName(def.file), def.pos))
+                  << ")" << std::endl;
+    }
+}
+
 void CDEProject::definition(std::string_view filename, uint32_t pos) {
     CI_KEY ref({index_->getFile(filename), pos});
     std::cout << "(message \"Searching...\")" << std::endl;
@@ -208,7 +221,6 @@ void CDEProject::definition(std::string_view filename, uint32_t pos) {
         std::cout << "(message \"No definition found\")" << std::endl;
     }
 }
-
 
 void CDEProject::references(std::string_view filename, uint32_t pos) {
     uint32_t file = index_->getFile(filename),

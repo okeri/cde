@@ -36,6 +36,7 @@ class CDEProject {
     void scanProject();
     void check(std::string_view filename);
     void definition(std::string_view filename, uint32_t pos);
+    void info(std::string_view filename, uint32_t pos);
     void references(std::string_view filename, uint32_t pos);
     void findfile(std::string_view filename, std::string_view parent);
     void swapSrcHdr(std::string_view filename);

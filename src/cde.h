@@ -85,6 +85,11 @@ class CDE {
         getProject(projectpath, filename).definition(filename, pos);
     }
 
+    void info(const std::string &projectpath,
+              const std::string &filename, uint32_t pos) {
+        getProject(projectpath, filename).info(filename, pos);
+    }
+
     void references(const std::string &projectpath,
                     const std::string &filename, uint32_t pos) {
         getProject(projectpath, filename).references(filename, pos);

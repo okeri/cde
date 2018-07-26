@@ -1,5 +1,5 @@
 ;; Cde - C development environment for emacs
-;; Copyright (C) 2016 Oleg Keri
+;; Copyright (C) 2016-2018 Oleg Keri
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -53,6 +53,8 @@ larger than company-idle-delay for comfort usage")
 (defcustom cde-check-on-save nil "syntax check on save (immediately)")
 
 (defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
+(defcustom cde-showdef-delay 1 "delay for showing definitions")
+
 (defvar cde-mode-hook nil)
 (defun empty(dummy))
 
@@ -61,6 +63,7 @@ larger than company-idle-delay for comfort usage")
 (defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
+(defvar cde--showdef-timer nil)
 (defvar cde--lock-guard nil)
 
 (defvar-local cde--check-timer nil)
@@ -104,6 +107,14 @@ larger than company-idle-delay for comfort usage")
 	(cde--send-command (concat "D " cde--project " "
 				   buffer-file-name " "
 				   (cde--sympos-string) "\n"))))))
+(defun cde-showdef()
+  (when cde--project
+    (cde--check-map)
+    (let ((line (buffer-substring-no-properties
+		 (line-beginning-position) (line-end-position))))
+      (cde--send-command (concat "I " cde--project " "
+				 buffer-file-name " "
+				 (cde--sympos-string) "\n")))))
 
 (defun cde-symbol-ref()
   (interactive)
@@ -272,6 +283,8 @@ larger than company-idle-delay for comfort usage")
     (cancel-timer cde--check-timer))
   (when (timerp cde--idle-timer)
     (cancel-timer cde--idle-timer))
+  (when (timerp cde--showdef-timer)
+    (cancel-timer cde--showdef-timer))
 
   (remove-hook 'after-save-hook 'cde--unmap)
   (remove-hook 'after-change-functions 'cde--change)
@@ -309,6 +322,8 @@ larger than company-idle-delay for comfort usage")
 
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
+    (setq cde--showdef-timer
+	  (run-with-idle-timer cde-showdef-delay t #'cde-showdef))
     (add-hook 'after-save-hook 'cde--unmap)
     (add-hook 'after-change-functions 'cde--change)
     (add-hook 'company-completion-started-hook 'cde--lock)
