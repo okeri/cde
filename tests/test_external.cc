@@ -58,6 +58,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     // complete
     std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
     start = std::chrono::system_clock::now();
+    cde.recv();
     for (unsigned i = 0; i < 10; ++i) {
         cde.send(std::string("C ") + path + "simple " + srcfilename + " p 6 10\n");
         BOOST_CHECK_EQUAL(cde.recv(),
@@ -92,6 +93,7 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     // hdr/src.
     cde.send(std::string("F ") + path + "simple " + hdrfilename + "\n");
+    cde.recv();
     BOOST_CHECK_EQUAL(cde.recv(), "(find-file \"" + srcfilename + "\")\n");
 
     // def
@@ -129,8 +131,9 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cde.send(std::string("A ") + srcfilename + "\n");
     cde.recv();
     cde.recv();
-
+    cde.recv();
     cde.send(std::string("A ") + hdrfilename + "\n");
+    cde.recv();
     cde.recv();
     cde.recv();
 
@@ -145,7 +148,6 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
 
     cde.send(std::string("B ") + path + "map " +
              hdrfilename + "\n");
-
     BOOST_CHECK_EQUAL(cde.recv(), "(cde--error-rep 1)\n");
 
     // quit
