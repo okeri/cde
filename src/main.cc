@@ -126,6 +126,7 @@ int main(int argc, char *argv[]) {
                                      count > 3 ? commands[3] : "");
                     }
                     break;
+
                 case 'I':
                     if (count == 4 && !commands[3].empty()) {
                         cde.info(commands[1], commands[2],

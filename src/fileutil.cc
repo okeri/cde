@@ -148,6 +148,57 @@ void collectFiles(std::string_view path,
     }
 }
 
+
+const char *extractPos(char *buffer, size_t len, bool open) {
+    if (open) {
+        for (len = 0; len < MAX_DISP_LEN; ++len) {
+            if (buffer[len] == '\n') {
+                buffer[len] = '\0';
+                break;
+            }
+        }
+        if (len == MAX_DISP_LEN) {
+            strcpy(buffer + MAX_DISP_LEN - 4, "...");
+        }
+    } else {
+        for (char *et = buffer + len - 1; et > buffer; --et) {
+            if (isgraph(*et)) {
+                *(et + 1) = '\0';
+                break;
+            }
+        }
+    }
+    return buffer;
+}
+
+const char *extractPosInString(std::string_view data, uint32_t start, uint32_t end) {
+    static char buffer[4096];
+    auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
+    if (len < sizeof(buffer)) {
+        std::copy(data.data() + start, data.data() + start + len, buffer);
+        return extractPos(buffer, len, end == INVALID);
+    } else {
+        return "Declaration is too big to display";
+    }
+}
+
+const char *extractPosInFile(const std::string &filename, uint32_t start, uint32_t end) {
+    static char buffer[4096];
+    std::ifstream is(filename);
+    if (is) {
+        auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
+        if (len < sizeof(buffer)) {
+            is.seekg(start, is.beg);
+            is.readsome(buffer, len);
+            return extractPos(buffer, len, end == INVALID);
+        } else {
+            return "Declaration is too big to display";
+        }
+    } else {
+        return "cannot open source file";
+    }
+}
+
 const char *findLineInFile(const std::string &filename, uint32_t position) {
     static char buffer[4096];
     std::ifstream is(filename);
@@ -195,7 +246,7 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
         return tok;
 
     } else {
-        return "cannot open file";
+        return "cannot open source file";
     }
 }
 

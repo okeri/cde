@@ -24,6 +24,7 @@
 #include "rapidjson/document.h"
 #include "fileutil.h"
 #include "cdeproject.h"
+#include "emacsmapper.h"
 
 namespace {
 
@@ -67,6 +68,7 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
             }
         }
     };
+
     std::string mangled(projectPath);
     manglePath(mangled);
     auto dbpath = fileutil::join(store, mangled);
@@ -197,10 +199,21 @@ void CDEProject::info(std::string_view filename, uint32_t pos) {
     if (const auto& defIt = index_->records().find(ref);
         defIt != index_->records().end()) {
         const CI_DATA &def = defIt->second;
-        std::cout << "(message "
-                  << std::quoted(fileutil::findLineInFile(
-                      index_->fileName(def.file), def.pos))
-                  << ")" << std::endl;
+        if (def.declValid()) {
+            auto filename = index_->fileName(def.file);
+            const auto &mapped = EmacsMapper::mapped();
+            const char *result;
+            if (auto found = mapped.find(filename); found != mapped.end()) {
+                result = fileutil::extractPosInString(found->second.first,
+                                                      def.declBegin, def.declEnd);
+            } else {
+                result = fileutil::extractPosInFile(filename,
+                                                      def.declBegin, def.declEnd);
+            }
+            std::cout << "(message "
+                      << std::quoted(result)
+                      << ")" << std::endl;
+        }
     }
 }
 
@@ -382,6 +395,8 @@ void CDEProject::completion(std::string_view filename,
     index_->completion(index_->getFile(filename), prefix, line, column);
 }
 
+enum {MAX_FILESTORAGE_SIZE = 4096};
+
 CDEProject::~CDEProject() {
     if (nocache_) {
         return;
@@ -390,7 +405,7 @@ CDEProject::~CDEProject() {
     uint32_t num;
     Dbt key(&num, sizeof(uint32_t));
     Dbt data;
-    unsigned char pack[2048];
+    unsigned char pack[MAX_FILESTORAGE_SIZE];
     data.set_data(pack);
 
     for (auto it = index_->begin() + 1; it != index_->end(); ++it) {

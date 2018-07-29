@@ -296,13 +296,100 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
     std::string getLocStr(const SourceLocation &location,
                           uint32_t *pos, uint32_t *line = nullptr);
 
-    uint32_t getLoc(const SourceLocation &location,
-                    uint32_t *pos, uint32_t *line = nullptr);
+    template <class D>
+    SourceRange getParentSourceRangeIfAny(D *node, int levels = 1) {
+        auto parents = node->getASTContext().getParents(*node);
+        if (!parents.empty()) {
+            if (levels > 1) {
+                // must be sure all direct parents except last one is Decl )
+                auto next = parents.begin()->template get<Decl>();
+                if (next) {
+                    return getParentSourceRangeIfAny(next, levels - 1);
+                }
+            }
+            auto parent = parents.begin()->template get<DeclStmt>();
+            if (parent) {
+                return parent->getSourceRange();
+            }
+        }
+        return node->getSourceRange();
+    }
+
+    SourceRange extend(const SourceRange &in, uint32_t offset) {
+        return in.getEnd().isValid() ? SourceRange(
+            in.getBegin(), in.getEnd().getLocWithOffset(offset)) : in;
+    }
 
     template <class D>
-    inline void record(const SourceLocation &locRef, const D *decl,
+    void record(const SourceLocation &locRef, const D *decl,
                        bool fwd = false) {
-        record(locRef, decl->getLocation(), fwd);
+        bool skipMethod = false;
+        switch (decl->getKind()) {
+            case Decl::Function:
+                skipMethod = true;
+                [[fallthrough]];
+
+            case Decl::CXXConstructor:
+            case Decl::CXXDestructor:
+            case Decl::CXXConversion:
+            case Decl::CXXMethod:
+                if (auto function = cast<FunctionDecl>(decl); function) {
+                    if (function->doesThisDeclarationHaveABody()) {
+                        record(locRef, decl->getLocation(),
+                               SourceRange(function->getLocStart(),
+                                       function->getBody()->getLocStart()),
+                               fwd);
+                        return;
+                    }
+                    if (!skipMethod) {
+                        if (auto method = cast<CXXMethodDecl>(function); method) {
+                            if (method->isConst()) {
+                                record(locRef, decl->getLocation(),
+                                       decl->getSourceRange(), fwd);
+                                return;
+                            }
+                        }
+                    }
+                    record(locRef, decl->getLocation(),
+                           extend(decl->getSourceRange(), 1), fwd);
+                }
+                break;
+
+            case Decl::ParmVar:
+                record(locRef, decl->getLocation(),
+                       extend(getParentSourceRangeIfAny(decl), 1));
+                break;
+
+            case Decl::Binding:
+                record(locRef, decl->getLocation(),
+                       getParentSourceRangeIfAny(decl, 2));
+                break;
+
+                //            case Decl::VarTemplateSpecialization:
+            case Decl::Var:
+                record(locRef, decl->getLocation(),
+                       getParentSourceRangeIfAny(decl));
+                break;
+
+            case Decl::Field:
+                if (auto next = decl->getNextDeclInContext(); next) {
+                    record(locRef, decl->getLocation(),
+                           SourceRange(decl->getLocStart(), next->getLocStart()),
+                           false);
+                }
+                break;
+
+            case Decl::EnumConstant:
+            case Decl::CXXRecord:
+            case Decl::Namespace:
+                record(locRef, decl->getLocation(),
+                       SourceRange(decl->getLocStart(), SourceLocation()));
+                break;
+
+            default:
+                record(locRef, decl->getLocation(), extend(decl->getSourceRange(), 1));
+                break;
+        }
     }
     void handleDiagnostics(uint32_t marker,
                            const std::string &tuFile,
@@ -312,7 +399,7 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
                            uint32_t *errline = nullptr,
                            uint32_t *errcol = nullptr);
     void record(const SourceLocation &locRef, const SourceLocation &locDef,
-                bool fwd = false);
+                const SourceRange &locRangeDef, bool fwd = false);
     bool VisitDecl(Decl *d);
     bool VisitDeclRefExpr(DeclRefExpr *e);
     bool VisitCXXConstructExpr(CXXConstructExpr *e);
@@ -353,6 +440,13 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
     void completion(uint32_t fid, std::string_view prefix,
                     uint32_t line, std::uint32_t column);
 };
+
+template <>
+void CDEIndex::Impl::record<MacroDefinitionRecord>(
+    const SourceLocation &locRef, const MacroDefinitionRecord *decl, bool) {
+    record(locRef, decl->getLocation(),
+           SourceRange(decl->getSourceRange().getBegin(), SourceLocation()));
+}
 
 // CDEIndex::Impl implementation
 
@@ -481,7 +575,7 @@ uint32_t CDEIndex::Impl::getFile(const llvm::StringRef &filename,
 }
 
 const SourceInfo* CDEIndex::Impl::getDominatedParent(
-    const SourceInfo * si) const {
+    const SourceInfo *si) const {
     const SourceInfo *token = si;
     while (token->parents_.size() != 0 && token->args_.empty()) {
         token = &files_[token->parents_[0]];
@@ -534,13 +628,38 @@ bool CDEIndex::Impl::VisitMemberExpr(MemberExpr *e) {
 }
 
 void CDEIndex::Impl::record(const SourceLocation &locRef,
-                            const SourceLocation &locDef, bool fwd) {
+                            const SourceLocation &locDef,
+                            const SourceRange &locRangeDef,
+                            bool fwd) {
+
+    auto getLoc = [this] (const SourceLocation &location) {
+        SourceLocation expansionLoc(sm_->getExpansionLoc(location));
+        if (auto fe = feFromLocation(expansionLoc); fe != nullptr) {
+            return std::make_tuple(getFile(fe->getName()),
+                                   sm_->getDecomposedLoc(expansionLoc).second,
+                                   sm_->getExpansionLineNumber(expansionLoc));
+        }
+        return std::make_tuple(static_cast<uint32_t>(INVALID), 0u, 0u);
+    };
+
+    auto getFastLoc = [this] (const SourceLocation &location) {
+        SourceLocation expansionLoc(sm_->getExpansionLoc(location));
+        return sm_->getDecomposedLoc(expansionLoc).second;
+    };
+
     CI_KEY ref;
     CI_DATA def;
     uint32_t refline, line;
     if (locRef.isInvalid() || locDef.isInvalid()) return;
-    ref.file = getLoc(locRef, &ref.pos, &refline);
-    def.file = getLoc(locDef, &def.pos, &line);
+    std::tie(ref.file, ref.pos, refline) = getLoc(locRef);
+    std::tie(def.file, def.pos, line) = getLoc(locDef);
+    if (locRangeDef.getEnd().isValid()) {
+        def.declBegin = getFastLoc(locRangeDef.getBegin());
+        def.declEnd = getFastLoc(locRangeDef.getEnd());
+    } else if (locRangeDef.getBegin().isValid()) {
+        def.declBegin = getFastLoc(locRangeDef.getBegin());
+    }
+
     if (ref != def && def.file != INVALID) {
         def.flags = CI_DATA::None;
         def.refline = refline;
@@ -580,9 +699,7 @@ bool CDEIndex::Impl::VisitTypeLoc(TypeLoc tl) {
 
 bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
     const Decl *definition = nullptr;
-    const FunctionDecl *function_def = nullptr;
-    Decl::Kind kind = declaration->getKind();
-    switch (kind) {
+    switch (declaration->getKind()) {
         case Decl::UsingDirective:
             definition = cast<UsingDirectiveDecl>(declaration)
                     ->getNominatedNamespace();
@@ -592,14 +709,19 @@ bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
             definition = cast<NamespaceAliasDecl>(declaration)
                     ->getNamespace();
             break;
-
-        case Decl::Function:
-        case Decl::CXXMethod:
         case Decl::CXXConstructor:
         case Decl::CXXDestructor:
         case Decl::CXXConversion:
-            if (cast<FunctionDecl>(declaration)->getBody(function_def)) {
-                record(function_def->getLocation(), declaration, true);
+        case Decl::Function:
+        case Decl::CXXMethod:
+            if (auto function = cast<FunctionDecl>(declaration); function) {
+                if (!function->isThisDeclarationADefinition()) {
+                    const FunctionDecl *body = nullptr;
+                    if (function->getBody(body)) {
+                        record(body->getLocation(), declaration->getLocation(),
+                               SourceRange(), true);
+                    }
+                }
             }
             return true;
 
@@ -611,7 +733,6 @@ bool CDEIndex::Impl::VisitDecl(Decl *declaration) {
     }
     return true;
 }
-
 
 void CDEIndex::Impl::preprocess(uint32_t fid) {
     auto [tu, unit] = getParsedTU(fid);
@@ -652,12 +773,13 @@ const std::unordered_set<uint32_t> CDEIndex::Impl::getAllTUs(uint32_t file) {
     return result;
 }
 
+[[nodiscard]]
 std::pair<uint32_t, ASTUnit *> CDEIndex::Impl::getParsedTU(uint32_t fid) {
     uint32_t tuId = getAnyTU(fid);
     if (const auto &unitIter = units_.find(tuId); unitIter != units_.end()) {
         return std::make_pair(unitIter->first, unitIter->second.get());
     }
-    return std::make_pair(tuId, parse(tuId, fid));
+    return std::make_pair(tuId, parse(tuId, true));
 }
 
 [[nodiscard]]
@@ -769,12 +891,12 @@ void CDEIndex::Impl::preprocessTUforFile(ASTUnit *unit, uint32_t fid,
 
     for (const auto &it : *pp) {
         switch (it->getKind()) {
-            case PreprocessedEntity::EntityKind::MacroExpansionKind: {
-                MacroExpansion *me(cast<MacroExpansion>(it));
-                if (auto *mdr = me->getDefinition(); mdr != nullptr) {
-                    record(me->getSourceRange().getBegin(), mdr);
+            case PreprocessedEntity::EntityKind::MacroExpansionKind:
+                if (MacroExpansion *me(cast<MacroExpansion>(it)); me) {
+                    if (auto *mdr = me->getDefinition(); mdr != nullptr) {
+                        record(me->getSourceRange().getBegin(), mdr);
+                    }
                 }
-            }
                 break;
 
             case PreprocessedEntity::EntityKind::InclusionDirectiveKind:
@@ -1039,18 +1161,6 @@ std::string CDEIndex::Impl::getLocStr(const SourceLocation &location,
     return "<error>";
 }
 
-uint32_t CDEIndex::Impl::getLoc(const SourceLocation &location,
-                                uint32_t *pos, uint32_t *line) {
-    SourceLocation expansionLoc(sm_->getExpansionLoc(location));
-    if (auto fe = feFromLocation(expansionLoc); fe != nullptr) {
-        *pos = sm_->getDecomposedLoc(expansionLoc).second;
-        if (line) {
-            *line = sm_->getExpansionLineNumber(expansionLoc);
-        }
-        return getFile(fe->getName());
-    }
-    return INVALID;
-}
 
 bool CDEIndex::Impl::TraverseNestedNameSpecifierLoc(
     NestedNameSpecifierLoc nnsl) {

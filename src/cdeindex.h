@@ -37,8 +37,14 @@ struct CI_DATA {
     };
     uint32_t file;
     uint32_t pos;
+    uint32_t declBegin = INVALID;
+    uint32_t declEnd = INVALID;
     uint32_t refline : 30;
     uint8_t flags : 2;
+
+    bool declValid() const {
+        return declBegin != INVALID;
+    }
 };
 
 struct CI_KEY {
@@ -76,6 +82,8 @@ struct CI_KEY {
         data->pos = hpos;
         data->file = hfile;
         data->refline = line;
+        data->declBegin = INVALID;
+        data->declEnd = INVALID;
     }
 };
 

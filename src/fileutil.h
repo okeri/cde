@@ -40,6 +40,8 @@ uint32_t fileTime(std::string_view filename);
 bool fileExists(std::string_view filename);
 void collectFiles(std::string_view path,
                   std::forward_list<std::string> *files, bool checkExt = true);
-const char * findLineInFile(const std::string &filename, uint32_t ofs);
+const char *findLineInFile(const std::string &filename, uint32_t ofs);
+const char *extractPosInFile(const std::string &filename, uint32_t start, uint32_t end);
+const char *extractPosInString(std::string_view data, uint32_t start, uint32_t end);
 void mkdir(std::string_view path);
 }  // namespace fileutil
