@@ -296,18 +296,18 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
     std::string getLocStr(const SourceLocation &location,
                           uint32_t *pos, uint32_t *line = nullptr);
 
-    template <class D>
-    SourceRange getParentSourceRangeIfAny(D *node, int levels = 1) {
+    template <class P, class D>
+    SourceRange getParentSourceRangeOrSelf(D *node, int levels = 1) {
         auto parents = node->getASTContext().getParents(*node);
         if (!parents.empty()) {
             if (levels > 1) {
                 // must be sure all direct parents except last one is Decl )
                 auto next = parents.begin()->template get<Decl>();
                 if (next) {
-                    return getParentSourceRangeIfAny(next, levels - 1);
+                    return getParentSourceRangeOrSelf<P>(next, levels - 1);
                 }
             }
-            auto parent = parents.begin()->template get<DeclStmt>();
+            auto parent = parents.begin()->template get<P>();
             if (parent) {
                 return parent->getSourceRange();
             }
@@ -357,18 +357,17 @@ class CDEIndex::Impl final: public RecursiveASTVisitor<CDEIndex::Impl> {
 
             case Decl::ParmVar:
                 record(locRef, decl->getLocation(),
-                       extend(getParentSourceRangeIfAny(decl), 1));
+                       extend(getParentSourceRangeOrSelf<TypeLoc>(decl), 1));
                 break;
 
             case Decl::Binding:
                 record(locRef, decl->getLocation(),
-                       getParentSourceRangeIfAny(decl, 2));
+                       getParentSourceRangeOrSelf<DeclStmt>(decl, 2));
                 break;
 
-                //            case Decl::VarTemplateSpecialization:
             case Decl::Var:
                 record(locRef, decl->getLocation(),
-                       getParentSourceRangeIfAny(decl));
+                       getParentSourceRangeOrSelf<DeclStmt>(decl));
                 break;
 
             case Decl::Field:
