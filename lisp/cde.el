@@ -53,7 +53,7 @@ larger than company-idle-delay for comfort usage")
 (defcustom cde-check-on-save nil "syntax check on save (immediately)")
 
 (defcustom cde-disp-delay 0.2 "delay for showing diagnostic info")
-(defcustom cde-showdef-delay 1 "delay for showing definitions")
+(defcustom cde-showdef-delay 0 "delay for showing definitions")
 
 (defvar cde-mode-hook nil)
 (defun empty(dummy))
@@ -109,12 +109,16 @@ larger than company-idle-delay for comfort usage")
 				   (cde--sympos-string) "\n"))))))
 (defun cde-showdef()
   (when cde--project
-    (cde--check-map)
-    (let ((line (buffer-substring-no-properties
-		 (line-beginning-position) (line-end-position))))
-      (cde--send-command (concat "I " cde--project " "
-				 buffer-file-name " "
-				 (cde--sympos-string) "\n")))))
+    (let* ((line (line-number-at-pos))
+  	   (current (assq line cde--diags)))
+      (unless cde--lock-guard
+	(unless current
+	  (cde--check-map)
+	  (let ((line (buffer-substring-no-properties
+		       (line-beginning-position) (line-end-position))))
+	    (cde--send-command (concat "I " cde--project " "
+				       buffer-file-name " "
+				       (cde--sympos-string) "\n"))))))))
 
 (defun cde-symbol-ref()
   (interactive)
@@ -322,8 +326,11 @@ larger than company-idle-delay for comfort usage")
 
     (setq cde--idle-timer
 	  (run-with-idle-timer cde-disp-delay t #'cde--error-disp))
-    (setq cde--showdef-timer
-	  (run-with-idle-timer cde-showdef-delay t #'cde-showdef))
+
+    (when (> cde-showdef-delay 0)
+      (setq cde--showdef-timer
+	    (run-with-idle-timer cde-showdef-delay t #'cde-showdef)))
+
     (add-hook 'after-save-hook 'cde--unmap)
     (add-hook 'after-change-functions 'cde--change)
     (add-hook 'company-completion-started-hook 'cde--lock)
