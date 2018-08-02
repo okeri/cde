@@ -142,7 +142,7 @@ larger than company-idle-delay for comfort usage")
 		      (line-end-position)))))
     (if (equal curr parent)
 	(setq line 0)
-      (setq line (string-to-int
+      (setq line (string-to-number
 		  (substring curr 0
 			     (string-match "\t" curr)))))
     (find-file-other-window parent)
