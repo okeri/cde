@@ -40,7 +40,8 @@ bool endsWithLow(std::string_view str, std::string_view end) {
 }
 
 bool isSource(std::string_view path) {
-    constexpr std::string_view exts[] = {".c", ".cc", ".cpp", ".cxx", ".c++", ".cu" , ""};
+    constexpr std::string_view exts[] = {
+        ".c", ".cc", ".cpp", ".cxx", ".c++", ".cu", ""};
     for (int i = 0; exts[i] != ""; ++i) {
         if (endsWithLow(path, exts[i])) {
             return true;
@@ -84,8 +85,8 @@ std::string purify(std::string_view path) {
     while (tok != std::string::npos) {
         size_t lev = 0;
         tokd = ret.rfind('/', tok - 1);
-        while (tokd != std::string::npos && ret[tokd + 1] == '.'
-               && ret[tokd + 2] == '.') {
+        while (tokd != std::string::npos && ret[tokd + 1] == '.' &&
+               ret[tokd + 2] == '.') {
             lev++;
             tokd = ret.rfind('/', tokd - 1);
         }
@@ -131,10 +132,10 @@ bool fileExists(std::string_view filename) {
     return fs::exists(filename);
 }
 
-void collectFiles(std::string_view path,
-                  std::forward_list<std::string> *files, bool checkExt) {
+void collectFiles(std::string_view path, std::forward_list<std::string>* files,
+    bool checkExt) {
     if (fs::exists(path)) {
-        for (const auto& entry: fs::directory_iterator(path)) {
+        for (const auto& entry : fs::directory_iterator(path)) {
             auto name = entry.path().filename().string();
             auto relative = entry.path().string();
             if (!entry.is_directory()) {
@@ -148,8 +149,7 @@ void collectFiles(std::string_view path,
     }
 }
 
-
-const char *extractPos(char *buffer, size_t len, bool open) {
+const char* extractPos(char* buffer, size_t len, bool open) {
     if (open) {
         for (len = 0; len < MAX_DISP_LEN; ++len) {
             if (buffer[len] == '\n') {
@@ -161,7 +161,7 @@ const char *extractPos(char *buffer, size_t len, bool open) {
             strcpy(buffer + MAX_DISP_LEN - 4, "...");
         }
     } else {
-        for (char *et = buffer + len - 1; et > buffer; --et) {
+        for (char* et = buffer + len - 1; et > buffer; --et) {
             if (isgraph(*et)) {
                 *(et + 1) = '\0';
                 break;
@@ -171,7 +171,8 @@ const char *extractPos(char *buffer, size_t len, bool open) {
     return buffer;
 }
 
-const char *extractPosInString(std::string_view data, uint32_t start, uint32_t end) {
+const char* extractPosInString(
+    std::string_view data, uint32_t start, uint32_t end) {
     static char buffer[4096];
     auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
     if (len < sizeof(buffer)) {
@@ -182,7 +183,8 @@ const char *extractPosInString(std::string_view data, uint32_t start, uint32_t e
     }
 }
 
-const char *extractPosInFile(const std::string &filename, uint32_t start, uint32_t end) {
+const char* extractPosInFile(
+    const std::string& filename, uint32_t start, uint32_t end) {
     static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
@@ -199,7 +201,7 @@ const char *extractPosInFile(const std::string &filename, uint32_t start, uint32
     }
 }
 
-const char *findLineInFile(const std::string &filename, uint32_t position) {
+const char* findLineInFile(const std::string& filename, uint32_t position) {
     static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
@@ -210,7 +212,7 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
             is.seekg(position - sizeof(buffer), is.beg);
         }
         size_t read = is.readsome(buffer, sizeof(buffer));
-        char *tok = buffer - 1 + (sv ? read : position);
+        char* tok = buffer - 1 + (sv ? read : position);
         while (*tok != '\n' && tok >= buffer) {
             --tok;
         }
@@ -234,7 +236,7 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
         }
 
         // trim right
-        for (char *et = tok; *et; ++et) {
+        for (char* et = tok; *et; ++et) {
             if (*et == '\n') {
                 *et = 0;
                 break;
@@ -249,7 +251,6 @@ const char *findLineInFile(const std::string &filename, uint32_t position) {
         return "cannot open source file";
     }
 }
-
 
 void mkdir(std::string_view path) {
     std::error_code ec;

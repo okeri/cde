@@ -25,19 +25,19 @@ EmacsMapper& EmacsMapper::inst() {
     return instance;
 }
 
-EmacsMapper::RemappedFiles &EmacsMapper::mapped() {
+EmacsMapper::RemappedFiles& EmacsMapper::mapped() {
     return inst().mapped_;
 }
 
-void EmacsMapper::map(const std::string &filename, size_t size) {
+void EmacsMapper::map(const std::string& filename, size_t size) {
     std::string buffer(size, 0);
     if (size) {
-        std::cin.read(const_cast<char *>(buffer.c_str()), size);
+        std::cin.read(const_cast<char*>(buffer.c_str()), size);
     }
-    inst().mapped_[filename] = std::make_pair(
-        buffer, static_cast<uint32_t>(time(NULL)));
+    inst().mapped_[filename] =
+        std::make_pair(buffer, static_cast<uint32_t>(time(NULL)));
 }
 
-void EmacsMapper::unmap(const std::string &filename) {
+void EmacsMapper::unmap(const std::string& filename) {
     inst().mapped_.erase(filename);
 }

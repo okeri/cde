@@ -29,36 +29,38 @@ GccSupport& GccSupport::inst() {
     return instance;
 }
 
-void GccSupport::init(const std::string &path) {
+void GccSupport::init(const std::string& path) {
     std::string cmd = path + " -v -E -x c++ /dev/null 2>&1";
-    setenv("LANG", "C" , 1);
+    setenv("LANG", "C", 1);
     if (auto pipe = popen(cmd.c_str(), "r"); pipe) {
         char buffer[0xfff];
         std::string result;
         while (fgets(buffer, sizeof(buffer), pipe)) {
             result += buffer;
         }
-        constexpr std::string_view startTag = "#include <...> search starts here:";
-        if (auto start = result.find(startTag);
-            start != std::string::npos) {
+        constexpr std::string_view startTag =
+            "#include <...> search starts here:";
+        if (auto start = result.find(startTag); start != std::string::npos) {
             start += startTag.length();
 
             if (auto end = result.find("End of search list.", start);
                 end != std::string::npos) {
-                std::unordered_set<std::string> &includes = inst().includes_;
-                strBreak(result, [&includes] (auto begin, auto end) {
-                        includes.emplace(std::string("-I") +
-                                         fileutil::purify(
-                                             std::string(begin, end)));
+                std::unordered_set<std::string>& includes = inst().includes_;
+                strBreak(result,
+                    [&includes](auto begin, auto end) {
+                        includes.emplace(
+                            std::string("-I") +
+                            fileutil::purify(std::string(begin, end)));
                         return true;
-                    }, start, end);
+                    },
+                    start, end);
             } else {
-                std::cout << "(message \"" << path
-                          << " returned garbage\")" << std::endl;
+                std::cout << "(message \"" << path << " returned garbage\")"
+                          << std::endl;
             }
         } else {
-            std::cout << "(message \"" << path
-                      << " returned garbage\")" << std::endl;
+            std::cout << "(message \"" << path << " returned garbage\")"
+                      << std::endl;
         }
         pclose(pipe);
     } else {
@@ -66,6 +68,6 @@ void GccSupport::init(const std::string &path) {
     }
 }
 
-std::unordered_set<std::string> &GccSupport::includes() {
+std::unordered_set<std::string>& GccSupport::includes() {
     return inst().includes_;
 }

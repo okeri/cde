@@ -29,17 +29,17 @@
 namespace {
 
 #if DB_VERSION_MAJOR > 5
-int BDBKeyCmp(DB *, const DBT *dbt1, const DBT *dbt2, size_t *locp) {
+int BDBKeyCmp(DB*, const DBT* dbt1, const DBT* dbt2, size_t* locp) {
 #else
-int BDBKeyCmp(DB *, const DBT *dbt1, const DBT *dbt2) {
+int BDBKeyCmp(DB*, const DBT* dbt1, const DBT* dbt2) {
 #endif
     if (dbt1->size == dbt2->size) {
-         if (dbt1->size == sizeof(uint32_t)) {
+        if (dbt1->size == sizeof(uint32_t)) {
             return *static_cast<int*>(dbt1->data) -
-                    *static_cast<int*>(dbt2->data);
+                   *static_cast<int*>(dbt2->data);
         } else {
             CI_KEY *k1(static_cast<CI_KEY*>(dbt1->data)),
-                    *k2(static_cast<CI_KEY*>(dbt2->data));
+                *k2(static_cast<CI_KEY*>(dbt2->data));
             if (*k1 < *k2) {
                 return -1;
             } else if (*k2 < *k1) {
@@ -56,13 +56,13 @@ const char ccj_file_id[] = "compile_commands.json";
 
 }  // namespace
 
-
 CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
-                       bool nocache, bool pch) noexcept
-        : db_(NULL, 0), nocache_(nocache) {
+    bool nocache, bool pch) noexcept :
+    db_(NULL, 0),
+    nocache_(nocache) {
     // init database
-    auto manglePath = [] (auto &s) {
-        for (auto &it : s) {
+    auto manglePath = [](auto& s) {
+        for (auto& it : s) {
             if (it == '/') {
                 it = '!';
             }
@@ -79,25 +79,25 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
     db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
 
     // read index
-    Dbc *curs;
+    Dbc* curs;
     Dbt key, data;
-    SourceInfo::SourceInfoPacked *pack;
+    SourceInfo::SourceInfoPacked* pack;
     db_.cursor(NULL, &curs, 0);
     int res = curs->get(&key, &data, DB_FIRST);
     bool recovery = false;
     while (res != DB_NOTFOUND) {
         if (key.get_size() == sizeof(CI_KEY)) {
             index_->set(static_cast<CI_KEY*>(key.get_data()),
-                        static_cast<CI_DATA*>(data.get_data()));
+                static_cast<CI_DATA*>(data.get_data()));
         } else if (key.get_size() == sizeof(uint32_t)) {
-            pack =  static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
+            pack = static_cast<SourceInfo::SourceInfoPacked*>(data.get_data());
             index_->push(*static_cast<uint32_t*>(key.get_data()),
-                         pack->filename(), pack->updated_time,
-                         pack->parent_count, pack->parents());
+                pack->filename(), pack->updated_time, pack->parent_count,
+                pack->parents());
         }
         try {
             res = curs->get(&key, &data, DB_NEXT);
-        } catch (std::exception &e) {
+        } catch (std::exception& e) {
             recovery = true;
             break;
         }
@@ -113,13 +113,13 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
     // load proj values
     if (std::ifstream f(fileutil::join(projectPath, easy_file_id)); f) {
         std::string content((std::istreambuf_iterator<char>(f)),
-                            std::istreambuf_iterator<char>());
+            std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
     } else {
         f.open(fileutil::join(projectPath, ccj_file_id));
         if (f) {
             std::string content((std::istreambuf_iterator<char>(f)),
-                                std::istreambuf_iterator<char>());
+                std::istreambuf_iterator<char>());
             rapidjson::Document root;
             if (root.Parse(content.c_str()); root.IsArray()) {
                 for (auto it = root.Begin(); it != root.End(); ++it) {
@@ -153,22 +153,21 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                         std::vector<std::string> ignores{"-c", "-o"};
                         bool ignoreNext = true;  // skip just first
                         strBreak(command->value.GetString(),
-                                 [&args, &ignores, &ignoreNext]
-                                 (auto begin, auto end) {
-                                     if (!ignoreNext) {
-                                         std::string arg(begin, end);
-                                         if (find(ignores.begin(),
-                                                  ignores.end(), arg) ==
-                                             ignores.end()) {
-                                             args.emplace_back(arg);
-                                         } else {
-                                             ignoreNext = true;
-                                         }
-                                     } else {
-                                         ignoreNext = false;
-                                     }
-                                     return true;
-                                 });
+                            [&args, &ignores, &ignoreNext](
+                                auto begin, auto end) {
+                                if (!ignoreNext) {
+                                    std::string arg(begin, end);
+                                    if (find(ignores.begin(), ignores.end(),
+                                            arg) == ignores.end()) {
+                                        args.emplace_back(arg);
+                                    } else {
+                                        ignoreNext = true;
+                                    }
+                                } else {
+                                    ignoreNext = false;
+                                }
+                                return true;
+                            });
 
                         index_->setUnitWithArgs(filename, std::move(args));
                     }
@@ -198,21 +197,19 @@ void CDEProject::info(std::string_view filename, uint32_t pos) {
     index_->parse(ref.file, CDEIndex::ParseOptions::Normal);
     if (const auto& defIt = index_->records().find(ref);
         defIt != index_->records().end()) {
-        const CI_DATA &def = defIt->second;
+        const CI_DATA& def = defIt->second;
         if (def.declValid()) {
             auto filename = index_->fileName(def.file);
-            const auto &mapped = EmacsMapper::mapped();
-            const char *result;
+            const auto& mapped = EmacsMapper::mapped();
+            const char* result;
             if (auto found = mapped.find(filename); found != mapped.end()) {
-                result = fileutil::extractPosInString(found->second.first,
-                                                      def.declBegin, def.declEnd);
+                result = fileutil::extractPosInString(
+                    found->second.first, def.declBegin, def.declEnd);
             } else {
-                result = fileutil::extractPosInFile(filename,
-                                                      def.declBegin, def.declEnd);
+                result = fileutil::extractPosInFile(
+                    filename, def.declBegin, def.declEnd);
             }
-            std::cout << "(message "
-                      << std::quoted(result)
-                      << ")" << std::endl;
+            std::cout << "(message " << std::quoted(result) << ")" << std::endl;
         }
     }
 }
@@ -224,25 +221,24 @@ void CDEProject::definition(std::string_view filename, uint32_t pos) {
 
     if (const auto& defIt = index_->records().find(ref);
         defIt != index_->records().end()) {
-        const CI_DATA &def = defIt->second;
+        const CI_DATA& def = defIt->second;
         std::cout << "(find-file \"";
         std::cout << index_->fileName(def.file)
-             << "\")(goto-char (point-min))(forward-char " << def.pos
-             << ")(push (list \"" << filename
-             << "\" " << pos << ") cde--ring)(message \"\")" << std::endl;
+                  << "\")(goto-char (point-min))(forward-char " << def.pos
+                  << ")(push (list \"" << filename << "\" " << pos
+                  << ") cde--ring)(message \"\")" << std::endl;
     } else {
         std::cout << "(message \"No definition found\")" << std::endl;
     }
 }
 
 void CDEProject::references(std::string_view filename, uint32_t pos) {
-    uint32_t file = index_->getFile(filename),
-            dfile = INVALID, dpos;
+    uint32_t file = index_->getFile(filename), dfile = INVALID, dpos;
     std::cout << "(message \"Searching...\")" << std::endl;
     index_->parse(file, CDEIndex::ParseOptions::Recursive);
 
     std::map<CI_KEY, uint32_t> results;
-    for (const auto&[key, value] : index_->records()) {
+    for (const auto& [key, value] : index_->records()) {
         if (value.pos == pos && value.file == file) {
             results[key] = value.refline;
             if (value.flags & CI_DATA::Forward) {
@@ -266,30 +262,28 @@ void CDEProject::references(std::string_view filename, uint32_t pos) {
     } else {
         std::string last = "", current;
         std::cout << "(cde--ref-setup '(";
-        for (const auto&[key, value] : results) {
+        for (const auto& [key, value] : results) {
             current = index_->fileName(key.file);
             if (last != current) {
                 std::cout << "\"" << current << "\" ";
                 last = current;
             }
             std::cout << "(" << value << " "
-                      << std::quoted(fileutil::findLineInFile(current,
-                                                              key.pos))
+                      << std::quoted(fileutil::findLineInFile(current, key.pos))
                       << ") ";
         }
         std::cout << "))(message \"\")" << std::endl;
     }
 }
 
-void CDEProject::findfile(std::string_view filename,
-                          std::string_view parent) {
+void CDEProject::findfile(std::string_view filename, std::string_view parent) {
     if (uint32_t file = index_->findFile(filename); file != INVALID) {
-        std::cout << "(find-file \"" << index_->fileName(file)
-                  << "\")" << std::endl;
+        std::cout << "(find-file \"" << index_->fileName(file) << "\")"
+                  << std::endl;
     } else {
         uint32_t pfile = index_->getFile(parent);
         std::vector<std::string> includes =
-                index_->includes(pfile, fileutil::dirUp(parent));
+            index_->includes(pfile, fileutil::dirUp(parent));
 
         for (const auto& include_path : includes) {
             std::string test = fileutil::join(include_path, filename);
@@ -304,26 +298,19 @@ void CDEProject::findfile(std::string_view filename,
 }
 
 void CDEProject::swapSrcHdr(std::string_view filename) {
-    static std::string exts[][9] = {
-        {".c", ".h", ".H", ""},
-        {".cc", ".hh", ".h", ".H", ""},
-        {".cpp", ".hpp", ".h", ".hh", ".H", ""},
-        {".cxx", ".hxx", ".h", ".hh", ".H", ""},
-        {".c++", ".h++", ".h", ""},
+    static std::string exts[][9] = {{".c", ".h", ".H", ""},
+        {".cc", ".hh", ".h", ".H", ""}, {".cpp", ".hpp", ".h", ".hh", ".H", ""},
+        {".cxx", ".hxx", ".h", ".hh", ".H", ""}, {".c++", ".h++", ".h", ""},
         {".C", ".H", ".h", ""},
         {".h", ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ""},
-        {".hh", ".cc", ".cpp", ".cxx", ""},
-        {".hpp", ".cpp", ""},
-        {".hxx", ".cxx", ""},
-        {".h++", ".c++", ""},
-        {".H", ".C", ".c", ".cc", ".cpp", ".cxx", ""},
-        {""}
-    };
+        {".hh", ".cc", ".cpp", ".cxx", ""}, {".hpp", ".cpp", ""},
+        {".hxx", ".cxx", ""}, {".h++", ".c++", ""},
+        {".H", ".C", ".c", ".cc", ".cpp", ".cxx", ""}, {""}};
 
     std::string ext = fileutil::extension(filename);
     if (ext == "") {
         std::cout << "(message \"file " << filename << " have no extension\")"
-             << std::endl;
+                  << std::endl;
         return;
     }
 
@@ -343,7 +330,7 @@ void CDEProject::swapSrcHdr(std::string_view filename) {
 
             uint32_t file = index_->getFile(filename);
             std::vector<std::string> includes =
-                    index_->includes(file, fileutil::dirUp(filename));
+                index_->includes(file, fileutil::dirUp(filename));
 
             for (const auto& include_path : includes) {
                 test = fileutil::join(include_path, base);
@@ -353,13 +340,13 @@ void CDEProject::swapSrcHdr(std::string_view filename) {
                         std::cout << "(find-file \"" << testfile << "\")"
                                   << std::endl;
                         return;
-                     }
+                    }
                 }
             }
         }
     }
-    std::cout << "(message \"cannot find pair for " << filename
-              << "\")" << std::endl;
+    std::cout << "(message \"cannot find pair for " << filename << "\")"
+              << std::endl;
 }
 
 bool CDEProject::fileInProject(std::string_view filename) const {
@@ -367,12 +354,11 @@ bool CDEProject::fileInProject(std::string_view filename) const {
 }
 
 void CDEProject::acknowledge(std::string_view filename) {
-    std::cout << "(cde--ack \"" << filename << "\" \""
-              << index_->projectPath() << "\")"
-         << std::endl;
+    std::cout << "(cde--ack \"" << filename << "\" \"" << index_->projectPath()
+              << "\")" << std::endl;
     index_->preprocess(index_->getFile(filename));
     std::cout << "(setcar (cdr (assq 'cde-mode minor-mode-alist)) \" cde\")"
-            << std::endl;
+              << std::endl;
 }
 
 void CDEProject::scanProject() {
@@ -389,13 +375,12 @@ void CDEProject::check(std::string_view filename) {
     index_->parse(index_->getFile(filename), CDEIndex::ParseOptions::Force);
 }
 
-void CDEProject::completion(std::string_view filename,
-                            std::string_view prefix,
-                            uint32_t line, uint32_t column) {
+void CDEProject::completion(std::string_view filename, std::string_view prefix,
+    uint32_t line, uint32_t column) {
     index_->completion(index_->getFile(filename), prefix, line, column);
 }
 
-enum {MAX_FILESTORAGE_SIZE = 4096};
+enum { MAX_FILESTORAGE_SIZE = 4096 };
 
 CDEProject::~CDEProject() {
     if (nocache_) {
@@ -418,7 +403,7 @@ CDEProject::~CDEProject() {
     key.set_size(sizeof(CI_KEY));
     data.set_size(sizeof(CI_DATA));
 
-    for (const auto &[k, v] : index_->records()) {
+    for (const auto& [k, v] : index_->records()) {
         key.set_data(const_cast<CI_KEY*>(&k));
         data.set_data(const_cast<CI_DATA*>(&v));
         db_.put(NULL, &key, &data, 0);
