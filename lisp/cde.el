@@ -14,8 +14,6 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-(require 'company-template)
-(require 'cl-lib)
 
 (defgroup cde nil "cde mode" :group 'c)
 
@@ -56,11 +54,11 @@ larger than company-idle-delay for comfort usage")
 (defcustom cde-showdef-delay 0 "delay for showing definitions")
 
 (defvar cde-mode-hook nil)
+(defvar cde-mode-exit-hook nil)
 (defun empty(dummy))
 
 ;; internal variables
 (defvar cde--ring '())
-(defvar cde--ref-window nil)
 (defvar cde--process nil)
 (defvar cde--idle-timer nil)
 (defvar cde--showdef-timer nil)
@@ -120,36 +118,6 @@ larger than company-idle-delay for comfort usage")
 				       buffer-file-name " "
 				       (cde--sympos-string) "\n"))))))))
 
-(defun cde-symbol-ref()
-  (interactive)
-  (when cde--project
-    (cde--check-map)
-    (cde--send-command (concat "R " cde--project " " buffer-file-name " "
-			       (cde--sympos-string) "\n"))))
-
-(defun cde-ref-jmp()
-  (interactive)
-  (let* ((curr (buffer-substring-no-properties
-		(line-beginning-position)
-		(line-end-position)))
-	 (parent curr)
-	 (line))
-    (save-excursion
-      (while (string-match "\t" parent)
-	(forward-line -1)
-	(setq parent (buffer-substring-no-properties
-		      (line-beginning-position)
-		      (line-end-position)))))
-    (if (equal curr parent)
-	(setq line 0)
-      (setq line (string-to-number
-		  (substring curr 0
-			     (string-match "\t" curr)))))
-    (find-file-other-window parent)
-    (goto-char (point-min))
-    (when (not (eq line 0))
-      (forward-line (1- line)))))
-
 (defun cde-symbol-back()
   (interactive)
   (let ((pos (car cde--ring)))
@@ -185,25 +153,6 @@ larger than company-idle-delay for comfort usage")
 (define-minor-mode cde-mode "cde"  nil " cde[processing...]" nil :group 'cde
   (if cde-mode (cde--init) (cde--deinit)))
 
-(defun company-cde(command &optional arg &rest ignored)
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-cde))
-    (prefix (and cde-mode cde--project
-		 (not (company-in-string-or-comment))
-		 (company-grab-symbol)))
-    (candidates (cons :async
-		      'cde--candidates))
-    (annotation (get-text-property 0 'anno arg))
-    (meta (get-text-property 0 'meta arg))
-    (post-completion (let ((anno (get-text-property 0 'anno arg)))
-		       (when anno
-			 (insert anno)
-			 (company-template-c-like-templatify
-			  (concat arg anno)))))
-    (sorted t)
-    (no-cache t)
-    ))
 
 ;; private functions
 (defun cde--sympos()
@@ -214,36 +163,6 @@ larger than company-idle-delay for comfort usage")
   (let ((bounds (bounds-of-thing-at-point 'symbol)))
     (if bounds
 	(int-to-string (car bounds)) nil)))
-
-(defun cde--ref-setup(items)
-  (let ((refbuf (get-buffer-create "references")))
-    (when (not (window-live-p cde--ref-window))
-      (delete-other-windows)
-
-      (setq cde--ref-window (split-window-right))
-      (set-window-buffer cde--ref-window refbuf)
-
-      (select-window cde--ref-window))
-
-    (with-current-buffer refbuf
-      (setq-local buffer-read-only nil)
-      (cde-ref-mode)
-      (erase-buffer)
-      (dolist (item items)
-	(if (listp item)
-	    (insert (propertize (format "%5d|" (car item)) 'face 'linum) "\t"
-		    (nth 1 item) "\n")
-	  (insert (propertize item 'face 'font-lock-type-face) "\n")))
-      (setq-local buffer-read-only t)
-      (goto-char (point-min)))))
-
-(defvar cde-ref-mode-map
-  (let ((map (make-keymap)))
-    (define-key map (kbd "RET") 'cde-ref-jmp) map)
-  "Keymap for cde-ref mode")
-
-(define-derived-mode cde-ref-mode nil "cde references"
-  "Major mode for cde references navigation\\{cde-ref-mode-map}")
 
 (defun cde--check-map()
   (unless cde--buffer-mapped
@@ -273,10 +192,16 @@ larger than company-idle-delay for comfort usage")
       (setq-local cde--check-timer
       	    (run-at-time cde-check nil #'cde--check-handler buffer)))))
 
+(defun cde--in-string-or-comment () 
+  (let ((ppss (syntax-ppss)))
+    (or (car (setq ppss (nthcdr 3 ppss)))
+  	(car (setq ppss (cdr ppss)))
+  	(nth 3 ppss))))
+
 (defun cde--change (start end len)
   (setq-local cde--buffer-mapped nil)
   (when (and cde-mode  cde--project (> cde-check 0)
-	     (not (company-in-string-or-comment)))
+	     (not (cde--in-string-or-comment)))
     (when (timerp cde--check-timer)
       (cancel-timer cde--check-timer))
     (setq-local cde--check-timer
@@ -292,9 +217,7 @@ larger than company-idle-delay for comfort usage")
 
   (remove-hook 'after-save-hook 'cde--unmap)
   (remove-hook 'after-change-functions 'cde--change)
-  (remove-hook 'company-completion-started-hook 'cde--lock)
-  (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
-  (remove-hook 'company-completion-finished-hook 'cde--unlock)
+  (run-hooks 'cde-mode-exit-hook)
   (cde-quit))
 
 (add-hook 'kill-emacs-query-functions 'cde-quit)
@@ -332,10 +255,7 @@ larger than company-idle-delay for comfort usage")
 	    (run-with-idle-timer cde-showdef-delay t #'cde-showdef)))
 
     (add-hook 'after-save-hook 'cde--unmap)
-    (add-hook 'after-change-functions 'cde--change)
-    (add-hook 'company-completion-started-hook 'cde--lock)
-    (add-hook 'company-completion-cancelled-hook 'cde--unlock)
-    (add-hook 'company-completion-finished-hook 'cde--unlock))
+    (add-hook 'after-change-functions 'cde--change))
   (setcar (cdr (assq 'cde-mode minor-mode-alist)) " cde[processing...]")
   (cde--send-command (concat "A " buffer-file-name "\n")))
 
@@ -359,6 +279,12 @@ larger than company-idle-delay for comfort usage")
 		(concat cde--buffer-string ")"))))
     (setq cde--buffer-string "(progn ")))
 
+(defun cde--grab-symbol () 
+  (if (looking-at "\\_>")
+    	(buffer-substring (point) (save-excursion (skip-syntax-backward "w_")
+    						  (point)))
+      (unless (and (char-after) (memq (char-syntax (char-after)) '(?w ?_)))
+    	"")))
 
 (defun cde--send-command(cmd)
   (when cde--process
@@ -382,7 +308,8 @@ larger than company-idle-delay for comfort usage")
 							   (nth 2 comp)
 							   (nth 3 comp))
 					  'meta (nth 0 comp))))))
-  (cde--filter (company-grab-symbol)))
+  (cde--filter (cde--grab-symbol)))
+
 
 (defun cde--filter(prefix)
   (let ((completions '()))
@@ -394,7 +321,7 @@ larger than company-idle-delay for comfort usage")
 (defun cde--candidates(callback)
   (setq-local cde--callback callback)
   (let ((pos (or (cde--sympos) (point)))
-	(prefix (company-grab-symbol)))
+	(prefix (cde--grab-symbol)))
     (if (and cde--completion-list (boundp 'cde--start) (eq pos cde--start)
 	     (or (not prefix) (string-prefix-p cde--start-prefix prefix)))
 	(cde--filter prefix)
