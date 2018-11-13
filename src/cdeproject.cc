@@ -260,17 +260,12 @@ void CDEProject::references(std::string_view filename, uint32_t pos) {
     if (results.empty()) {
         std::cout << "(message \"No references found\")" << std::endl;
     } else {
-        std::string last = "", current;
         std::cout << "(cde--ref-setup '(";
         for (const auto& [key, value] : results) {
-            current = index_->fileName(key.file);
-            if (last != current) {
-                std::cout << "\"" << current << "\" ";
-                last = current;
-            }
-            std::cout << "(" << value << " "
-                      << std::quoted(fileutil::findLineInFile(current, key.pos))
-                      << ") ";
+            auto refname = index_->fileName(key.file);
+            std::cout << "(\"" << refname << "\" " << value << " "
+                      << std::quoted(fileutil::findLineInFile(refname, key.pos))
+                      << ")";
         }
         std::cout << "))(message \"\")" << std::endl;
     }

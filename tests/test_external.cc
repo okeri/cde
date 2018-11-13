@@ -113,8 +113,8 @@ BOOST_AUTO_TEST_CASE(TestExternalSimple) {
     cde.send(std::string("R ") + path + "simple " + hdrfilename + " 391\n");
     cde.recv();  // skip searching
     BOOST_CHECK_EQUAL(
-        cde.recv(), std::string("(cde--ref-setup '(\"") + srcfilename +
-                        "\" (7 \"array[0].run1(42);\") ))(message \"\")\n");
+        cde.recv(), std::string("(cde--ref-setup '((\"") + srcfilename +
+                        "\" 7 \"array[0].run1(42);\")))(message \"\")\n");
 
     // multi mapping test
     srcfilename = path + "map" + boost::filesystem::path::preferred_separator +
