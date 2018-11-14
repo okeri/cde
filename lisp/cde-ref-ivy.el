@@ -14,18 +14,13 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+(when featurep 'cde-ref
+      (error "cde-ref-ivy is not compatible with cde-ref"))
+
 (require 'cde)
 (require 'counsel)
 
 (defalias 'cde-symbol-ref-ivy #'cde-symbol-ref)
-
-(defun cde-symbol-ref()
-  "Find references"
-  (interactive)
-  (when cde--project
-    (cde--check-map)
-    (cde--send-command (concat "R " cde--project " " buffer-file-name " "
-			       (cde--sympos-string) "\n"))))
 
 (defun cde--ref-setup(items)
   (let (cands '())

@@ -14,6 +14,9 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+(when featurep 'cde-ref-ivy
+      (error "cde-ref is not compatible with cde-ref-ivy"))
+
 (require 'cde)
 
 (defvar cde--ref-window nil)
@@ -30,15 +33,6 @@
 
 (define-derived-mode cde-ref-mode nil "cde references"
   "Major mode for cde references navigation\\{cde-ref-mode-map}")
-
-
-(defun cde-symbol-ref()
-  "show references"
-  (interactive)
-  (when cde--project
-    (cde--check-map)
-    (cde--send-command (concat "R " cde--project " " buffer-file-name " "
-			       (cde--sympos-string) "\n"))))
 
 (defun cde-ref-jmp()
   (interactive)

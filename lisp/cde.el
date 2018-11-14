@@ -14,6 +14,8 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+(require 'cl-lib)
+(require 'company-template)
 
 (defgroup cde nil "cde mode" :group 'c)
 
@@ -105,6 +107,14 @@ larger than company-idle-delay for comfort usage")
 	(cde--send-command (concat "D " cde--project " "
 				   buffer-file-name " "
 				   (cde--sympos-string) "\n"))))))
+(defun cde-symbol-ref()
+  "show references"
+  (interactive)
+  (when cde--project
+    (cde--check-map)
+    (cde--send-command (concat "R " cde--project " " buffer-file-name " "
+			       (cde--sympos-string) "\n"))))
+
 (defun cde-showdef()
   (when cde--project
     (let* ((line (line-number-at-pos))
@@ -192,16 +202,10 @@ larger than company-idle-delay for comfort usage")
       (setq-local cde--check-timer
       	    (run-at-time cde-check nil #'cde--check-handler buffer)))))
 
-(defun cde--in-string-or-comment () 
-  (let ((ppss (syntax-ppss)))
-    (or (car (setq ppss (nthcdr 3 ppss)))
-  	(car (setq ppss (cdr ppss)))
-  	(nth 3 ppss))))
-
 (defun cde--change (start end len)
   (setq-local cde--buffer-mapped nil)
   (when (and cde-mode  cde--project (> cde-check 0)
-	     (not (cde--in-string-or-comment)))
+	     (not (company-in-string-or-comment)))
     (when (timerp cde--check-timer)
       (cancel-timer cde--check-timer))
     (setq-local cde--check-timer
@@ -279,13 +283,6 @@ larger than company-idle-delay for comfort usage")
 		(concat cde--buffer-string ")"))))
     (setq cde--buffer-string "(progn ")))
 
-(defun cde--grab-symbol () 
-  (if (looking-at "\\_>")
-    	(buffer-substring (point) (save-excursion (skip-syntax-backward "w_")
-    						  (point)))
-      (unless (and (char-after) (memq (char-syntax (char-after)) '(?w ?_)))
-    	"")))
-
 (defun cde--send-command(cmd)
   (when cde--process
     (when cde-debug
@@ -308,7 +305,7 @@ larger than company-idle-delay for comfort usage")
 							   (nth 2 comp)
 							   (nth 3 comp))
 					  'meta (nth 0 comp))))))
-  (cde--filter (cde--grab-symbol)))
+  (cde--filter (company-grab-symbol)))
 
 
 (defun cde--filter(prefix)
@@ -321,7 +318,7 @@ larger than company-idle-delay for comfort usage")
 (defun cde--candidates(callback)
   (setq-local cde--callback callback)
   (let ((pos (or (cde--sympos) (point)))
-	(prefix (cde--grab-symbol)))
+	(prefix (company-grab-symbol)))
     (if (and cde--completion-list (boundp 'cde--start) (eq pos cde--start)
 	     (or (not prefix) (string-prefix-p cde--start-prefix prefix)))
 	(cde--filter prefix)
@@ -430,5 +427,36 @@ larger than company-idle-delay for comfort usage")
 		    (push (cons line (list level (aref errors (nth 1 data))))
 			  cde--diags)))))))))
   (cde--error-disp))
+
+(defun company-cde(command &optional arg &rest ignored)
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-cde))
+    (prefix (and cde-mode cde--project
+		 (not (company-in-string-or-comment))
+		 (company-grab-symbol)))
+    (candidates (cons :async
+		      'cde--candidates))
+    (annotation (get-text-property 0 'anno arg))
+    (meta (get-text-property 0 'meta arg))
+    (post-completion (let ((anno (get-text-property 0 'anno arg)))
+		       (when anno
+			 (insert anno)
+			 (company-template-c-like-templatify
+			  (concat arg anno)))))
+    (sorted t)
+    (no-cache t)))
+
+(add-hook 'cde-mode-hook
+	  (lambda()
+	    (add-hook 'company-completion-started-hook 'cde--lock)
+	    (add-hook 'company-completion-cancelled-hook 'cde--unlock)
+	    (add-hook 'company-completion-finished-hook 'cde--unlock)))
+
+(add-hook 'cde-mode-exit-hook
+	  (lambda()
+	    (remove-hook 'company-completion-started-hook 'cde--lock)
+	    (remove-hook 'company-completion-cancelled-hook 'cde--unlock)
+	    (remove-hook 'company-completion-finished-hook 'cde--unlock)))
 
 (provide 'cde)
