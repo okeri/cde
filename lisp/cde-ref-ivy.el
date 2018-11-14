@@ -14,7 +14,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-(when featurep 'cde-ref
+(when (featurep 'cde-ref)
       (error "cde-ref-ivy is not compatible with cde-ref"))
 
 (require 'cde)
@@ -33,4 +33,4 @@
 
 (ivy-set-display-transformer 'cde--ref-setup 'counsel-git-grep-transformer)
 
-(provide 'cde-ivy)
+(provide 'cde-ref-ivy)

@@ -14,7 +14,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-(when featurep 'cde-ref-ivy
+(when (featurep 'cde-ref-ivy)
       (error "cde-ref is not compatible with cde-ref-ivy"))
 
 (require 'cde)
