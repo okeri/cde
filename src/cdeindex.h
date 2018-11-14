@@ -31,10 +31,7 @@
 #include "strbreak.h"
 
 struct CI_DATA {
-    enum Flags : uint8_t {
-        None = 0x0,
-        Forward = 0x1
-    };
+    enum Flags : uint8_t { None = 0x0, Forward = 0x1 };
     uint32_t file;
     uint32_t pos;
     uint32_t declBegin = INVALID;
@@ -51,7 +48,7 @@ struct CI_KEY {
     uint32_t file;
     uint32_t pos;
 
-    bool operator<(const CI_KEY &rhs) const {
+    bool operator<(const CI_KEY& rhs) const {
         if (file == rhs.file) {
             return (pos < rhs.pos);
         } else {
@@ -59,23 +56,23 @@ struct CI_KEY {
         }
     }
 
-    bool operator==(const CI_KEY &rhs) const {
+    bool operator==(const CI_KEY& rhs) const {
         return (pos == rhs.pos && file == rhs.file);
     }
 
-    bool operator!=(const CI_KEY &rhs) const {
+    bool operator!=(const CI_KEY& rhs) const {
         return !(*this == rhs);
     }
 
-    bool operator==(const CI_DATA &rhs) const {
+    bool operator==(const CI_DATA& rhs) const {
         return (pos == rhs.pos && file == rhs.file);
     }
 
-    bool operator!=(const CI_DATA &rhs) const {
+    bool operator!=(const CI_DATA& rhs) const {
         return !(*this == rhs);
     }
 
-    void swapWithData(CI_DATA *data, uint32_t line) {
+    void swapWithData(CI_DATA* data, uint32_t line) {
         uint32_t hpos = pos, hfile = file;
         pos = data->pos;
         file = data->file;
@@ -87,7 +84,6 @@ struct CI_KEY {
     }
 };
 
-
 namespace std {
 
 template <>
@@ -98,7 +94,6 @@ struct hash<CI_KEY> {
 };
 
 }  // namespace std
-
 
 class SourceInfo {
     uint32_t fileId_;
@@ -114,21 +109,21 @@ class SourceInfo {
         uint32_t updated_time;
         uint32_t parent_count;
 
-        uint32_t *parents() {
+        uint32_t* parents() {
             return reinterpret_cast<uint32_t*>(this) + 2;
         }
 
-        char *filename() {
-            return reinterpret_cast<char *>(
-                parents() + parent_count);
+        char* filename() {
+            return reinterpret_cast<char*>(parents() + parent_count);
         }
     };
 
     SourceInfo(uint32_t fid, std::string_view filename,
-               uint32_t updated_time = 0, uint32_t parentCount = 0,
-               uint32_t *parents = nullptr)
-            : fileId_(fid), updated_time_(updated_time),
-              filename_(filename) {
+        uint32_t updated_time = 0, uint32_t parentCount = 0,
+        uint32_t* parents = nullptr) :
+        fileId_(fid),
+        updated_time_(updated_time),
+        filename_(filename) {
         if (parentCount) {
             parents_.resize(parentCount);
             std::copy(parents, parents + parentCount, parents_.begin());
@@ -145,14 +140,14 @@ class SourceInfo {
 
     void setArgs(std::string_view args) {
         args_.resize(0);
-        strBreak(args, [this] (auto begin, auto end) {
-                args_.emplace_back(begin, end);
-                return true;
-            });
+        strBreak(args, [this](auto begin, auto end) {
+            args_.emplace_back(begin, end);
+            return true;
+        });
     }
 
-    size_t fillPack(void *pack, size_t bufSize) const {
-        SourceInfoPacked *data = static_cast<SourceInfoPacked*>(pack);
+    size_t fillPack(void* pack, size_t bufSize) const {
+        SourceInfoPacked* data = static_cast<SourceInfoPacked*>(pack);
         data->updated_time = updated_time_;
         if (data->parent_count = parents_.size(); data->parent_count != 0) {
             std::copy(parents_.begin(), parents_.end(), data->parents());
@@ -180,42 +175,34 @@ class CDEIndex {
     std::unique_ptr<Impl> pImpl_;
 
   public:
-    enum class ParseOptions {
-        Normal,
-        Forget,
-        Force,
-        Recursive
-    };
+    enum class ParseOptions { Normal, Forget, Force, Recursive };
 
     enum { RootId = 0 };
 
   public:
-    CDEIndex(std::string_view projectPath, std::string_view storePath,
-             bool pch) noexcept;
+    CDEIndex(std::string_view projectPath, std::string_view storePath) noexcept;
     ~CDEIndex();
-    void set(CI_KEY *key, CI_DATA *data);
-    const std::unordered_map<CI_KEY, CI_DATA> &records() const;
-    const char *fileName(uint32_t fid);
+    void set(CI_KEY* key, CI_DATA* data);
+    const std::unordered_map<CI_KEY, CI_DATA>& records() const;
+    const char* fileName(uint32_t fid);
     const std::string& projectPath();
     void setGlobalArgs(std::string_view args);
     std::vector<SourceInfo>::const_iterator begin();
     std::vector<SourceInfo>::const_iterator end();
 
-    void push(uint32_t id, std::string_view path,
-              uint32_t time = 0, uint32_t parentCount = 0,
-              uint32_t *parents = nullptr);
+    void push(uint32_t id, std::string_view path, uint32_t time = 0,
+        uint32_t parentCount = 0, uint32_t* parents = nullptr);
 
-    void setUnitWithArgs(std::string_view filename,
-                         std::vector<std::string> &&args);
+    void setUnitWithArgs(
+        std::string_view filename, std::vector<std::string>&& args);
 
-    std::vector<std::string> includes(uint32_t file,
-                                      std::string_view relative = "") const;
+    std::vector<std::string> includes(
+        uint32_t file, std::string_view relative = "") const;
 
     bool parse(uint32_t fid, ParseOptions options);
     void preprocess(uint32_t fid);
-    void loadPCHData();
-    void completion(uint32_t fid, std::string_view prefix,
-                    uint32_t line, std::uint32_t column);
+    void completion(uint32_t fid, std::string_view prefix, uint32_t line,
+        std::uint32_t column);
 
     /** find files in index  ending with filename*/
     uint32_t findFile(std::string_view filename);

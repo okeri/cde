@@ -29,8 +29,8 @@ class CDEProject {
     std::unique_ptr<CDEIndex> index_;
 
   public:
-    CDEProject(std::string_view projectPath,
-               std::string_view store, bool nocache, bool pch) noexcept;
+    CDEProject(std::string_view projectPath, std::string_view store,
+        bool nocache) noexcept;
     ~CDEProject();
     bool fileInProject(std::string_view filename) const;
     void scanProject();
@@ -42,7 +42,7 @@ class CDEProject {
     void swapSrcHdr(std::string_view filename);
     void acknowledge(std::string_view filename);
     void completion(std::string_view filename, std::string_view prefix,
-                    uint32_t line, uint32_t column);
+        uint32_t line, uint32_t column);
 
     static std::string findProjectRoot(std::string_view projectPath);
 };

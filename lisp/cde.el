@@ -44,7 +44,6 @@ for example:
   'cde -C/tmp/cde' changes cde cache dir.
 
 other switches:
-  -P - enables PCH cache
   -G<path> - set current gcc location (-Gn for disable gcc includes lookup)")
 
 (defcustom cde-debug nil "toggle debug buffer")

@@ -17,7 +17,6 @@
 */
 
 #include <llvm/Config/llvm-config.h>
-#include <llvm/Support/CrashRecoveryContext.h>
 
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Basic/Diagnostic.h>
@@ -250,8 +249,6 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     enum { MinParentNodeAlloc = 0x100, MinIndexAlloc = 0x400 };
 
     std::string storePath_;
-    bool pch_;
-
     std::vector<SourceInfo> files_;
     std::map<size_t, size_t> hfilenames_;
     std::hash<std::string_view> hashStr;
@@ -277,7 +274,6 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     SourceInfo* find(uint32_t fid);
 
     bool haveNostdinc(uint32_t file) const;
-    std::string getPCHFilename(uint32_t n);
     void copyArgsToClangArgs(
         uint32_t file, std::vector<const char*>* clang_args) const;
 
@@ -408,8 +404,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     std::pair<uint32_t, ASTUnit*> getParsedTU(uint32_t fid);
 
   public:
-    Impl(std::string_view projectPath, std::string_view storePath,
-        bool pch) noexcept;
+    Impl(std::string_view projectPath, std::string_view storePath) noexcept;
     ~Impl();
     void set(CI_KEY* key, CI_DATA* data);
     const std::unordered_map<CI_KEY, CI_DATA>& records() const;
@@ -445,24 +440,15 @@ void CDEIndex::Impl::record<MacroDefinitionRecord>(
 
 // CDEIndex::Impl implementation
 
-CDEIndex::Impl::Impl(std::string_view projectPath, std::string_view storePath,
-    bool pch) noexcept :
+CDEIndex::Impl::Impl(
+    std::string_view projectPath, std::string_view storePath) noexcept :
     storePath_(storePath),
-    pch_(pch),
     pchOps_(new PCHContainerOperations()) {
     files_.reserve(MinIndexAlloc);
     push(0, projectPath, 0, 0, nullptr);
 }
 
 CDEIndex::Impl::~Impl() {
-    if (pch_) {
-        fileutil::mkdir(storePath_);
-        for (auto& [filename, unit] : units_) {
-            if (unit->getTranslationUnitKind() == TU_Complete) {
-                unit->Save(getPCHFilename(filename));
-            }
-        }
-    }
 }
 
 void CDEIndex::Impl::set(CI_KEY* key, CI_DATA* data) {
@@ -1178,65 +1164,10 @@ const FileEntry* CDEIndex::Impl::feFromLocation(
     return sm_->getFileEntryForID(sm_->getFileID(location));
 }
 
-std::string CDEIndex::Impl::getPCHFilename(uint32_t n) {
-    return fileutil::join(storePath_, std::to_string(n) + ".pch");
-}
-
-void CDEIndex::Impl::loadPCHData() {
-    // FIXME: disabled until llvm 3.9 will be released.
-    // actually i dont know why is it crashes. But this is not
-    // first-priority issue
-
-    return;
-
-    std::forward_list<std::string> files;
-    fileutil::collectFiles(storePath_, &files, false);
-
-    ASTUnit* unit;
-    FileSystemOptions fsopts;
-    for (const auto& it : files) {
-        uint32_t id = 0;
-        std::string basename = fileutil::basenameNoExt(it);
-        std::from_chars(
-            basename.data(), basename.data() + basename.length(), id);
-        if (id != 0) {
-            const SourceInfo* si = find(id);
-            if (fileutil::fileTime(si->fileName()) < si->time()) {
-                std::cout << "(message \"tryreal " << si->fileName() << "\")"
-                          << std::endl;
-                auto readASTData = [=, &unit] {
-                    IntrusiveRefCntPtr<DiagnosticsEngine> diags(
-                        CompilerInstance::createDiagnostics(
-                            new DiagnosticOptions()));
-                    unit = ASTUnit::LoadFromASTFile(it, pchOps_->getRawReader(),
-                        ASTUnit::WhatToLoad::LoadEverything, diags, fsopts,
-                        false, false, None, true
-#if (CLANG_VERSION_MAJOR > 4)
-                        ,
-                        true, true
-#endif
-
-                        )
-                               .release();
-                };
-
-                llvm::CrashRecoveryContext CRC;
-                if (CRC.RunSafelyOnThread(readASTData, 8 << 20)) {
-                    if (unit) {
-                        units_[id].reset(unit);
-                        std::cout << "(message \"reloaded " << id << "\")"
-                                  << std::endl;
-                    }
-                }
-            }
-        }
-    }
-}
-
 // CDEIndex implementation
-CDEIndex::CDEIndex(std::string_view projectPath, std::string_view storePath,
-    bool pch) noexcept :
-    pImpl_(std::make_unique<CDEIndex::Impl>(projectPath, storePath, pch)) {
+CDEIndex::CDEIndex(
+    std::string_view projectPath, std::string_view storePath) noexcept :
+    pImpl_(std::make_unique<CDEIndex::Impl>(projectPath, storePath)) {
 }
 
 CDEIndex::~CDEIndex() {
@@ -1291,10 +1222,6 @@ bool CDEIndex::parse(uint32_t fid, ParseOptions options) {
 
 void CDEIndex::preprocess(uint32_t fid) {
     pImpl_->preprocess(fid);
-}
-
-void CDEIndex::loadPCHData() {
-    pImpl_->loadPCHData();
 }
 
 void CDEIndex::completion(uint32_t fid, std::string_view prefix, uint32_t line,

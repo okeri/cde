@@ -57,7 +57,7 @@ const char ccj_file_id[] = "compile_commands.json";
 }  // namespace
 
 CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
-    bool nocache, bool pch) noexcept :
+    bool nocache) noexcept :
     db_(NULL, 0),
     nocache_(nocache) {
     // init database
@@ -73,7 +73,7 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
     manglePath(mangled);
     auto dbpath = fileutil::join(store, mangled);
 
-    index_ = std::make_unique<CDEIndex>(projectPath, dbpath, pch);
+    index_ = std::make_unique<CDEIndex>(projectPath, dbpath);
     dbpath += ".cache";
     db_.set_bt_compare(BDBKeyCmp);
     db_.open(NULL, dbpath.c_str(), NULL, DB_BTREE, DB_CREATE, 0);
@@ -174,10 +174,6 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
                 }
             }
         }
-    }
-
-    if (pch) {
-        index_->loadPCHData();
     }
 }
 

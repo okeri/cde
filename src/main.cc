@@ -30,7 +30,6 @@
 int main(int argc, char* argv[]) {
     std::string path(DEFAULT_PATH);
     std::string gccpath(DEFAULT_GCC_PATH);
-    bool pch = false;
     bool nocache = false;
     for (auto i = 0; i < argc; ++i) {
         size_t len = strlen(argv[i]);
@@ -42,10 +41,6 @@ int main(int argc, char* argv[]) {
                     } else if (len == 2 && argv[i][1] == 'n') {
                         nocache = true;
                     }
-                    break;
-
-                case 'P':
-                    pch = true;
                     break;
 
                 case 'G':
@@ -70,7 +65,7 @@ int main(int argc, char* argv[]) {
 
     fileutil::mkdir(path);
 
-    CDE cde(path, nocache, pch);
+    CDE cde(path, nocache);
     std::string command, last;
     std::vector<std::string> commands(8);
 

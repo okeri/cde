@@ -24,12 +24,11 @@ class CDE {
     std::string storePath_;
     std::unordered_map<std::string, CDEProject> projects_;
     bool nocache_;
-    bool pch_;
 
   private:
-    CDEProject& getProject(const std::string &path,
-                           const std::string &filename) {
-        if (const auto &found = projects_.find(path);
+    CDEProject& getProject(
+        const std::string& path, const std::string& filename) {
+        if (const auto& found = projects_.find(path);
             found != projects_.end()) {
             return found->second;
         } else {
@@ -38,75 +37,69 @@ class CDE {
         }
     }
 
-    CDEProject& getProjectByFilename(const std::string &filename) {
+    CDEProject& getProjectByFilename(const std::string& filename) {
         const auto& end = projects_.end();
 
-        if  (const auto& found = find_if(
-                 projects_.begin(), end,
-                 [filename] (const auto &p) {
-                     return p.second.fileInProject(filename);
-                 });
-             found != end) {
+        if (const auto& found = find_if(projects_.begin(), end,
+                [filename](const auto& p) {
+                    return p.second.fileInProject(filename);
+                });
+            found != end) {
             return found->second;
         }
 
-        std::string root = CDEProject::findProjectRoot(
-            fileutil::dirUp(filename));
+        std::string root =
+            CDEProject::findProjectRoot(fileutil::dirUp(filename));
 
-        if (const auto& fsfound = projects_.find(root);
-            fsfound != end) {
+        if (const auto& fsfound = projects_.find(root); fsfound != end) {
             return fsfound->second;
         }
 
-        return projects_.emplace(
-            std::piecewise_construct,
-            std::forward_as_tuple(root),
-            std::forward_as_tuple(root, storePath_,
-                                  nocache_, pch_))
-                .first->second;
+        return projects_
+            .emplace(std::piecewise_construct, std::forward_as_tuple(root),
+                std::forward_as_tuple(root, storePath_, nocache_))
+            .first->second;
     }
 
   public:
-    CDE(const std::string &store, bool nocache, bool pch)
-            : storePath_(store), nocache_(nocache) ,pch_(pch) {
+    CDE(const std::string& store, bool nocache) :
+        storePath_(store),
+        nocache_(nocache) {
     }
 
-    void update(const std::string &projectpath) {
+    void update(const std::string& projectpath) {
         getProject(projectpath, "").scanProject();
     }
 
-    void check(const std::string &projectpath,
-               const std::string &filename) {
+    void check(const std::string& projectpath, const std::string& filename) {
         getProject(projectpath, filename).check(filename);
     }
 
-    void definition(const std::string &projectpath,
-                    const std::string &filename, uint32_t pos) {
+    void definition(const std::string& projectpath, const std::string& filename,
+        uint32_t pos) {
         getProject(projectpath, filename).definition(filename, pos);
     }
 
-    void info(const std::string &projectpath,
-              const std::string &filename, uint32_t pos) {
+    void info(const std::string& projectpath, const std::string& filename,
+        uint32_t pos) {
         getProject(projectpath, filename).info(filename, pos);
     }
 
-    void references(const std::string &projectpath,
-                    const std::string &filename, uint32_t pos) {
+    void references(const std::string& projectpath, const std::string& filename,
+        uint32_t pos) {
         getProject(projectpath, filename).references(filename, pos);
     }
 
-    void completion(const std::string &projectpath,
-                    const std::string &filename,
-                    const std::string &prefix, uint32_t line,
-                    uint32_t column) {
-        getProject(projectpath, filename).completion(
-            filename, prefix, line, column);
+    void completion(const std::string& projectpath, const std::string& filename,
+        const std::string& prefix, uint32_t line, uint32_t column) {
+        getProject(projectpath, filename)
+            .completion(filename, prefix, line, column);
     }
 
     // this will be called BEFORE ack in case we are opening file by cde
     // that's why we searching file in index first
-    void findfile(const std::string &projectpath,
-                  const std::string &from, const std::string &filename) {
+    void findfile(const std::string& projectpath, const std::string& from,
+        const std::string& filename) {
         if (filename == "") {
             getProject(projectpath, from).swapSrcHdr(from);
         } else {
@@ -114,7 +107,7 @@ class CDE {
         }
     }
 
-    void ack(const std::string &filename) {
+    void ack(const std::string& filename) {
         getProjectByFilename(filename).acknowledge(filename);
     }
 };
