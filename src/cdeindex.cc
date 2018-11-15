@@ -252,7 +252,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     std::vector<SourceInfo> files_;
     std::map<size_t, size_t> hfilenames_;
     std::hash<std::string_view> hashStr;
-    std::unordered_map<CI_KEY, CI_DATA> records_;
+    std::map<CI_KEY, CI_DATA> records_;
     SourceManager* sm_;
     std::shared_ptr<PCHContainerOperations> pchOps_;
     std::map<uint32_t, std::unique_ptr<ASTUnit>> units_;
@@ -371,7 +371,6 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                         false);
                 }
                 break;
-
                 //            case Decl::EnumConstant:
             case Decl::CXXRecord:
             case Decl::Namespace:
@@ -407,7 +406,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     Impl(std::string_view projectPath, std::string_view storePath) noexcept;
     ~Impl();
     void set(CI_KEY* key, CI_DATA* data);
-    const std::unordered_map<CI_KEY, CI_DATA>& records() const;
+    const std::map<CI_KEY, CI_DATA>& records() const;
     const std::string& projectPath();
     const char* fileName(uint32_t fid);
     std::vector<SourceInfo>::const_iterator begin();
@@ -426,7 +425,6 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     uint32_t getFile(const llvm::StringRef& filename, uint32_t parent = RootId);
     bool parse(uint32_t fid, ParseOptions options);
     void preprocess(uint32_t fid);
-    void loadPCHData();
     void completion(uint32_t fid, std::string_view prefix, uint32_t line,
         std::uint32_t column);
 };
@@ -455,7 +453,7 @@ void CDEIndex::Impl::set(CI_KEY* key, CI_DATA* data) {
     records_[*key] = *data;
 }
 
-const std::unordered_map<CI_KEY, CI_DATA>& CDEIndex::Impl::records() const {
+const std::map<CI_KEY, CI_DATA>& CDEIndex::Impl::records() const {
     return records_;
 }
 
@@ -626,7 +624,9 @@ void CDEIndex::Impl::record(const SourceLocation& locRef,
     CI_KEY ref;
     CI_DATA def;
     uint32_t refline, line;
-    if (locRef.isInvalid() || locDef.isInvalid()) return;
+    if (locRef.isInvalid() || locDef.isInvalid()) {
+        return;
+    }
     std::tie(ref.file, ref.pos, refline) = getLoc(locRef);
     std::tie(def.file, def.pos, line) = getLoc(locDef);
     if (locRangeDef.getEnd().isValid()) {
@@ -1177,7 +1177,7 @@ void CDEIndex::set(CI_KEY* key, CI_DATA* data) {
     pImpl_->set(key, data);
 }
 
-const std::unordered_map<CI_KEY, CI_DATA>& CDEIndex::records() const {
+const std::map<CI_KEY, CI_DATA>& CDEIndex::records() const {
     return pImpl_->records();
 }
 

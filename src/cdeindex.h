@@ -24,7 +24,7 @@
 #include <string_view>
 #include <vector>
 #include <memory>
-#include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <algorithm>
 #include "fileutil.h"
@@ -83,17 +83,6 @@ struct CI_KEY {
         data->declEnd = INVALID;
     }
 };
-
-namespace std {
-
-template <>
-struct hash<CI_KEY> {
-    size_t operator()(const CI_KEY& k) const {
-        return hash<int>()(k.file) ^ (hash<int>()(k.pos) << 1);
-    }
-};
-
-}  // namespace std
 
 class SourceInfo {
     uint32_t fileId_;
@@ -183,7 +172,7 @@ class CDEIndex {
     CDEIndex(std::string_view projectPath, std::string_view storePath) noexcept;
     ~CDEIndex();
     void set(CI_KEY* key, CI_DATA* data);
-    const std::unordered_map<CI_KEY, CI_DATA>& records() const;
+    const std::map<CI_KEY, CI_DATA>& records() const;
     const char* fileName(uint32_t fid);
     const std::string& projectPath();
     void setGlobalArgs(std::string_view args);
