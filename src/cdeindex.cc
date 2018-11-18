@@ -349,16 +349,12 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     extend(getParentSourceRangeOrSelf<TypeLoc>(decl), 1));
                 break;
 
-            case Decl::EnumConstant:
-                record(locRef, decl->getLocation(),
-                    extend(getParentSourceRangeOrSelf<EnumDecl>(decl), 1));
-                break;
-
             case Decl::Binding:
                 record(locRef, decl->getLocation(),
                     getParentSourceRangeOrSelf<DeclStmt>(decl, 2));
                 break;
 
+            case Decl::EnumConstant:
             case Decl::Field:
             case Decl::Var:
                 record(locRef, decl->getLocation(),
@@ -846,7 +842,7 @@ void CDEIndex::Impl::preprocessTUforFile(
                     if (auto* mdr = me->getDefinition(); mdr != nullptr) {
                         auto mi = unit->getPreprocessor().getMacroInfo(
                             mdr->getName());
-                        if (!mi->tokens_empty()) {
+                        if (mi && !mi->tokens_empty()) {
                             auto last = mi->tokens_end();
                             --last;
                             record(me->getSourceRange().getBegin(),
