@@ -377,6 +377,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                 break;
         }
     }
+
     void handleDiagnostics(uint32_t marker, const std::string& tuFile,
         const StoredDiagnostic* begin, const StoredDiagnostic* end,
         bool onlyErrors, uint32_t* errline = nullptr,
@@ -420,13 +421,6 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     void completion(uint32_t fid, std::string_view prefix, uint32_t line,
         std::uint32_t column);
 };
-
-template <>
-void CDEIndex::Impl::record<MacroDefinitionRecord>(
-    const SourceLocation& locRef, const MacroDefinitionRecord* decl, bool) {
-    record(locRef, decl->getLocation(),
-        SourceRange(decl->getSourceRange().getBegin(), SourceLocation()));
-}
 
 // CDEIndex::Impl implementation
 
@@ -850,7 +844,19 @@ void CDEIndex::Impl::preprocessTUforFile(
             case PreprocessedEntity::EntityKind::MacroExpansionKind:
                 if (MacroExpansion * me(cast<MacroExpansion>(it)); me) {
                     if (auto* mdr = me->getDefinition(); mdr != nullptr) {
-                        record(me->getSourceRange().getBegin(), mdr);
+                        auto mi = unit->getPreprocessor().getMacroInfo(
+                            mdr->getName());
+                        if (!mi->tokens_empty()) {
+                            auto last = mi->tokens_end();
+                            --last;
+                            record(me->getSourceRange().getBegin(),
+                                mdr->getLocation(),
+                                SourceRange(
+                                    mi->getDefinitionLoc(), last->getEndLoc()));
+                        } else {
+                            record(me->getSourceRange().getBegin(),
+                                mdr->getLocation(), mdr->getSourceRange());
+                        }
                     }
                 }
                 break;
