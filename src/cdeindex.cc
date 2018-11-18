@@ -354,6 +354,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     getParentSourceRangeOrSelf<DeclStmt>(decl, 2));
                 break;
 
+            case Decl::Typedef:
             case Decl::EnumConstant:
             case Decl::Field:
             case Decl::Var:
