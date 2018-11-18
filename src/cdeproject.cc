@@ -199,11 +199,11 @@ void CDEProject::info(std::string_view filename, uint32_t pos) {
             const auto& mapped = EmacsMapper::mapped();
             const char* result;
             if (auto found = mapped.find(filename); found != mapped.end()) {
-                result = fileutil::extractPosInString(
-                    found->second.first, def.declBegin, def.declEnd);
+                result = fileutil::extractPosInString(found->second.first,
+                    def.declBegin, def.declEnd, def.pos - def.declBegin);
             } else {
-                result = fileutil::extractPosInFile(
-                    filename, def.declBegin, def.declEnd);
+                result = fileutil::extractPosInFile(filename, def.declBegin,
+                    def.declEnd, def.pos - def.declBegin);
             }
             std::cout << "(message " << std::quoted(result) << ")" << std::endl;
         }

@@ -20,6 +20,8 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <stack>
+#include <optional>
 
 #include "fileutil.h"
 
@@ -149,14 +151,58 @@ void collectFiles(std::string_view path, std::forward_list<std::string>* files,
     }
 }
 
-const char* extractPos(char* buffer, size_t len, bool open) {
+const char* extractPos(char* buffer, size_t len, bool open, uint32_t skip) {
     if (open) {
-        for (len = 0; len < MAX_DISP_LEN; ++len) {
-            if (buffer[len] == '\n') {
-                buffer[len] = '\0';
-                break;
+        // this is workaround only for displaying variable initializers
+        const char* openings[] = {"//", "/*", "\"", "'", "(", "{", nullptr};
+        const char* closings[] = {"\n", "*/", "\"", "'", ")", "}", nullptr};
+        const char* finalizators[] = {";", ",", nullptr};
+
+        std::stack<unsigned> levels;
+
+        auto equaln = [](const char* a, const char* b, size_t max) {
+            size_t ei = 0;
+            for (; b[ei] && a[ei] && ei < max && a[ei] == b[ei]; ++ei) {
+            }
+            return b[ei] == 0;
+        };
+
+        auto scan = [&equaln](const char* whence, size_t max,
+                        const char** items) -> std::optional<unsigned> {
+            for (auto element = 0; items[element] != nullptr; ++element) {
+                if (equaln(whence, items[element], max)) {
+                    return element;
+                }
+            }
+            return std::nullopt;
+        };
+
+        auto end = buffer + MAX_DISP_LEN;
+        for (auto b = buffer + skip; b < end; ++b) {
+            auto rest = end - buffer;
+            if (levels.empty()) {
+                if (scan(b, rest, finalizators)) {
+                    *b = 0;
+                    break;
+                }
+            } else if (equaln(b, closings[levels.top()], rest)) {
+                if (levels.top() == 1) {
+                    ++b;
+                }
+                levels.pop();
+                continue;
+            }
+
+            auto v = scan(b, rest, openings);
+            if (v) {
+                levels.push(*v);
+                if (*v < 2) {
+                    ++b;
+                }
             }
         }
+
+        // ellipse path
         if (len == MAX_DISP_LEN) {
             strcpy(buffer + MAX_DISP_LEN - 4, "...");
         }
@@ -172,19 +218,19 @@ const char* extractPos(char* buffer, size_t len, bool open) {
 }
 
 const char* extractPosInString(
-    std::string_view data, uint32_t start, uint32_t end) {
+    std::string_view data, uint32_t start, uint32_t end, uint32_t skip) {
     static char buffer[4096];
     auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
     if (len < sizeof(buffer)) {
         std::copy(data.data() + start, data.data() + start + len, buffer);
-        return extractPos(buffer, len, end == INVALID);
+        return extractPos(buffer, len, end == INVALID, skip);
     } else {
         return "Declaration is too big to display";
     }
 }
 
 const char* extractPosInFile(
-    const std::string& filename, uint32_t start, uint32_t end) {
+    const std::string& filename, uint32_t start, uint32_t end, uint32_t skip) {
     static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
@@ -192,7 +238,7 @@ const char* extractPosInFile(
         if (len < sizeof(buffer)) {
             is.seekg(start, is.beg);
             is.readsome(buffer, len);
-            return extractPos(buffer, len, end == INVALID);
+            return extractPos(buffer, len, end == INVALID, skip);
         } else {
             return "Declaration is too big to display";
         }

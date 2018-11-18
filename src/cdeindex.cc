@@ -351,7 +351,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
 
             case Decl::EnumConstant:
                 record(locRef, decl->getLocation(),
-                    cast<EnumConstantDecl>(decl)->getSourceRange());
+                    extend(getParentSourceRangeOrSelf<EnumDecl>(decl), 1));
                 break;
 
             case Decl::Binding:
@@ -359,24 +359,16 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     getParentSourceRangeOrSelf<DeclStmt>(decl, 2));
                 break;
 
+            case Decl::Field:
             case Decl::Var:
                 record(locRef, decl->getLocation(),
-                    getParentSourceRangeOrSelf<DeclStmt>(decl));
+                    SourceRange(decl->getLocStart(), SourceLocation()));
                 break;
 
-            case Decl::Field:
-                if (auto next = decl->getNextDeclInContext(); next) {
-                    record(locRef, decl->getLocation(),
-                        SourceRange(decl->getLocStart(), next->getLocStart()),
-                        false);
-                }
-                break;
-                //            case Decl::EnumConstant:
             case Decl::CXXRecord:
             case Decl::Namespace:
             case Decl::ClassTemplate:
-                record(locRef, decl->getLocation(),
-                    SourceRange(decl->getLocStart(), SourceLocation()));
+                record(locRef, decl->getLocation(), SourceRange());
                 break;
 
             default:
@@ -930,8 +922,8 @@ ASTUnit* CDEIndex::Impl::parse(uint32_t tu, bool cache) {
 
         copyArgsToClangArgs(tu, &args);
 
-        // We are not sure about language, so appending gcc c++ system include
-        // paths to the end seems ok.
+        // We are not sure about language, so appending gcc c++ system
+        // include paths to the end seems ok.
         if (!haveNostdinc(tu)) {
             // clang include path
             args.push_back(getClangIncludeArg());
