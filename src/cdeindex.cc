@@ -285,20 +285,28 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
         uint32_t* line = nullptr);
 
     template <class P, class D>
-    SourceRange getParentSourceRangeOrSelf(D* node, int levels = 1) {
-        auto parents = node->getASTContext().getParents(*node);
-        if (!parents.empty()) {
-            if (levels > 1) {
-                // must be sure all direct parents except last one is Decl )
-                auto next = parents.begin()->template get<Decl>();
-                if (next) {
-                    return getParentSourceRangeOrSelf<P>(next, levels - 1);
-                }
+    P* lookupParentSourceRange(D* node) {
+        auto& context = node->getASTContext();
+        auto parents = context.getParents(*node);
+        const ast_type_traits::DynTypedNode* parent;
+        P* result = nullptr;
+
+        while (!parents.empty()) {
+            parent = parents.begin();
+            result = parent->template get<P>();
+            if (result) {
+                return result;
             }
-            auto parent = parents.begin()->template get<P>();
-            if (parent) {
-                return parent->getSourceRange();
-            }
+            parents = context.getParents(*parent);
+        }
+        return nullptr;
+    }
+
+    template <class P, class D>
+    SourceRange getParentSourceRangeOrSelf(D* node) {
+        auto parent = lookupParentSourceRange<P>(node);
+        if (parent) {
+            return parent->getSourceRange();
         }
         return node->getSourceRange();
     }
@@ -310,7 +318,8 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
     }
 
     template <class D>
-    void record(const SourceLocation& locRef, const D* decl, bool fwd = false) {
+    void record(const SourceLocation& locRef, const SourceLocation& locDef,
+        const D* decl, bool fwd = false) {
         bool skipMethod = false;
         switch (decl->getKind()) {
             case Decl::Function:
@@ -323,7 +332,7 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
             case Decl::CXXMethod:
                 if (auto function = cast<FunctionDecl>(decl); function) {
                     if (function->doesThisDeclarationHaveABody()) {
-                        record(locRef, decl->getLocation(),
+                        record(locRef, locDef,
                             SourceRange(function->getLocStart(),
                                 function->getBody()->getLocStart()),
                             fwd);
@@ -333,46 +342,52 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                         if (auto method = cast<CXXMethodDecl>(function);
                             method) {
                             if (method->isConst()) {
-                                record(locRef, decl->getLocation(),
-                                    decl->getSourceRange(), fwd);
+                                record(locRef, locDef, decl->getSourceRange(),
+                                    fwd);
                                 return;
                             }
                         }
                     }
-                    record(locRef, decl->getLocation(),
-                        extend(decl->getSourceRange(), 1), fwd);
+                    record(
+                        locRef, locDef, extend(decl->getSourceRange(), 1), fwd);
                 }
                 break;
 
             case Decl::ParmVar:
-                record(locRef, decl->getLocation(),
-                    extend(getParentSourceRangeOrSelf<TypeLoc>(decl), 1));
+                record(locRef, locDef,
+                    lookupParentSourceRange<const FunctionDecl>(decl));
                 break;
 
             case Decl::Binding:
-                record(locRef, decl->getLocation(),
-                    getParentSourceRangeOrSelf<DeclStmt>(decl, 2));
+                record(locRef, locDef,
+                    getParentSourceRangeOrSelf<const DeclStmt>(decl));
                 break;
 
             case Decl::Typedef:
             case Decl::EnumConstant:
             case Decl::Field:
             case Decl::Var:
-                record(locRef, decl->getLocation(),
+                record(locRef, locDef,
                     SourceRange(decl->getLocStart(), SourceLocation()));
                 break;
 
+                // it's easy to enable below, but it's really inconvenient
+                // to use multiline info in minibuffer
             case Decl::CXXRecord:
             case Decl::Namespace:
             case Decl::ClassTemplate:
-                record(locRef, decl->getLocation(), SourceRange());
+                record(locRef, locDef, SourceRange());
                 break;
 
             default:
-                record(locRef, decl->getLocation(),
-                    extend(decl->getSourceRange(), 1));
+                record(locRef, locDef, extend(decl->getSourceRange(), 1));
                 break;
         }
+    }
+
+    template <class D>
+    void record(const SourceLocation& locRef, const D* decl, bool fwd = false) {
+        record(locRef, decl->getLocation(), decl, fwd);
     }
 
     void handleDiagnostics(uint32_t marker, const std::string& tuFile,

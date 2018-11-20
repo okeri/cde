@@ -151,8 +151,10 @@ void collectFiles(std::string_view path, std::forward_list<std::string>* files,
     }
 }
 
-const char* extractPos(char* buffer, size_t len, bool open, uint32_t skip) {
-    if (open) {
+enum { MaxDisplayLines = 12 };
+
+const char* extractPos(char* buffer, size_t len, size_t size, uint32_t skip) {
+    if (len == 0) {
         // this is workaround only for displaying variable initializers
         const char* openings[] = {"//", "/*", "\"", "'", "(", "{", nullptr};
         const char* closings[] = {"\n", "*/", "\"", "'", ")", "}", nullptr};
@@ -177,42 +179,55 @@ const char* extractPos(char* buffer, size_t len, bool open, uint32_t skip) {
             return std::nullopt;
         };
 
-        auto end = buffer + MAX_DISP_LEN;
-        for (auto b = buffer + skip; b < end; ++b) {
+        char* head;
+        auto end = buffer + size;
+        for (head = buffer + skip; head < end; ++head) {
             auto rest = end - buffer;
             if (levels.empty()) {
-                if (scan(b, rest, finalizators)) {
-                    *b = 0;
+                if (scan(head, rest, finalizators)) {
+                    *head = 0;
+                    len = head - buffer - 1;
                     break;
                 }
-            } else if (equaln(b, closings[levels.top()], rest)) {
+            } else if (equaln(head, closings[levels.top()], rest)) {
                 if (levels.top() == 1) {
-                    ++b;
+                    ++head;
                 }
                 levels.pop();
                 continue;
             }
 
-            auto v = scan(b, rest, openings);
+            auto v = scan(head, rest, openings);
             if (v) {
                 levels.push(*v);
                 if (*v < 2) {
-                    ++b;
+                    ++head;
                 }
             }
         }
 
-        // ellipse path
-        if (len == MAX_DISP_LEN) {
-            strcpy(buffer + MAX_DISP_LEN - 4, "...");
-        }
     } else {
-        for (char* et = buffer + len - 1; et > buffer; --et) {
-            if (isgraph(*et)) {
-                *(et + 1) = '\0';
+        *(buffer + std::min(size - 1, len)) = '\0';
+        // for (auto et = buffer + std::min(size - 1, len); et > buffer; --et) {
+        //     if (isgraph(*et)) {
+        //         *(et + 1) = '\0';
+        //         break;
+        //     }
+        // }
+    }
+
+    unsigned lines = 0;
+    for (auto head = buffer; head < buffer + len; ++head) {
+        if (*head == '\n') {
+            if (++lines > MaxDisplayLines) {
+                strcpy(head - 4, "...");
                 break;
             }
         }
+    }
+    // ellipse path
+    if (len > size) {
+        strcpy(buffer + size - 4, "...");
     }
     return buffer;
 }
@@ -220,13 +235,11 @@ const char* extractPos(char* buffer, size_t len, bool open, uint32_t skip) {
 const char* extractPosInString(
     std::string_view data, uint32_t start, uint32_t end, uint32_t skip) {
     static char buffer[4096];
-    auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
-    if (len < sizeof(buffer)) {
-        std::copy(data.data() + start, data.data() + start + len, buffer);
-        return extractPos(buffer, len, end == INVALID, skip);
-    } else {
-        return "Declaration is too big to display";
-    }
+    auto len = end != INVALID ? end - start : 0;
+    auto size = std::min(
+        end != INVALID ? len : data.length() - start + 1, sizeof(buffer));
+    std::copy(data.data() + start, data.data() + start + size, buffer);
+    return extractPos(buffer, len, size, skip);
 }
 
 const char* extractPosInFile(
@@ -234,14 +247,16 @@ const char* extractPosInFile(
     static char buffer[4096];
     std::ifstream is(filename);
     if (is) {
-        auto len = end != INVALID ? end - start : sizeof(buffer) - 1;
-        if (len < sizeof(buffer)) {
-            is.seekg(start, is.beg);
-            is.readsome(buffer, len);
-            return extractPos(buffer, len, end == INVALID, skip);
+        is.seekg(start, is.beg);
+        size_t len = end != INVALID ? end - start : 0;
+        size_t size;
+        if (end != INVALID) {
+            size = std::min(sizeof(buffer), len + 1);
+            is.readsome(buffer, size);
         } else {
-            return "Declaration is too big to display";
+            size = is.readsome(buffer, sizeof(buffer));
         }
+        return extractPos(buffer, len, size, skip);
     } else {
         return "cannot open source file";
     }
