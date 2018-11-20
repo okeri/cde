@@ -327,6 +327,21 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                 [[fallthrough]];
 
             case Decl::CXXConstructor:
+                if (auto ctor = dyn_cast<CXXConstructorDecl>(decl); ctor) {
+                    if (ctor->getNumCtorInitializers() > 0) {
+                        for (const auto& init : ctor->inits()) {
+                            const auto& field = init->getMember();
+                            if (field) {
+                                record(init->getSourceLocation(),
+                                    field->getLocation(),
+                                    SourceRange(field->getLocStart(),
+                                        SourceLocation()));
+                            }
+                        }
+                    }
+                }
+                [[fallthrough]];
+
             case Decl::CXXDestructor:
             case Decl::CXXConversion:
             case Decl::CXXMethod:
@@ -371,8 +386,8 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     SourceRange(decl->getLocStart(), SourceLocation()));
                 break;
 
-                // it's easy to enable below, but it's really inconvenient
-                // to use multiline info in minibuffer
+                // it's easy to enable below, but it's really
+                // inconvenient to use multiline info in minibuffer
             case Decl::CXXRecord:
             case Decl::Namespace:
             case Decl::ClassTemplate:
