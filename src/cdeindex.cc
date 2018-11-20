@@ -285,28 +285,29 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
         uint32_t* line = nullptr);
 
     template <class P, class D>
-    P* lookupParentSourceRange(D* node) {
+    std::pair<P*, unsigned> lookupParentSourceRange(D* node) {
         auto& context = node->getASTContext();
         auto parents = context.getParents(*node);
         const ast_type_traits::DynTypedNode* parent;
-        P* result = nullptr;
+        std::pair<P*, unsigned> result = {nullptr, 0};
 
         while (!parents.empty()) {
             parent = parents.begin();
-            result = parent->template get<P>();
-            if (result) {
+            result.first = parent->template get<P>();
+            result.second++;
+            if (result.first) {
                 return result;
             }
             parents = context.getParents(*parent);
         }
-        return nullptr;
+        return result;
     }
 
     template <class P, class D>
     SourceRange getParentSourceRangeOrSelf(D* node) {
         auto parent = lookupParentSourceRange<P>(node);
-        if (parent) {
-            return parent->getSourceRange();
+        if (parent.first) {
+            return parent.first->getSourceRange();
         }
         return node->getSourceRange();
     }
@@ -368,10 +369,23 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                 }
                 break;
 
-            case Decl::ParmVar:
-                record(locRef, locDef,
-                    lookupParentSourceRange<const FunctionDecl>(decl));
-                break;
+            case Decl::ParmVar: {
+                const auto l = lookupParentSourceRange<const LambdaExpr>(decl);
+                const auto f =
+                    lookupParentSourceRange<const FunctionDecl>(decl);
+                if (l.first != nullptr) {
+                    if (!f.first || l.second < f.second) {
+                        record(locRef, locDef,
+                            SourceRange(l.first->getBeginLoc(),
+                                l.first->getBody()->getBeginLoc()));
+                    }
+                }
+                if (f.first != nullptr) {
+                    if (!l.first || f.second < l.second) {
+                        record(locRef, locDef, f.first);
+                    }
+                }
+            } break;
 
             case Decl::Binding:
                 record(locRef, locDef,
