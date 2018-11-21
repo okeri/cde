@@ -410,11 +410,8 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     SourceRange(decl->getLocStart(), SourceLocation()));
                 break;
 
-                // it's easy to enable below, but it's really
-                // inconvenient to use multiline info in minibuffer
-            case Decl::CXXRecord:
+                // just keep decl-ref link, but remove preview
             case Decl::Namespace:
-            case Decl::ClassTemplate:
                 record(locRef, locDef, SourceRange());
                 break;
 
