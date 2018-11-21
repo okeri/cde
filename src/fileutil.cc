@@ -208,12 +208,6 @@ const char* extractPos(char* buffer, size_t len, size_t size, uint32_t skip) {
 
     } else {
         *(buffer + std::min(size - 1, len)) = '\0';
-        // for (auto et = buffer + std::min(size - 1, len); et > buffer; --et) {
-        //     if (isgraph(*et)) {
-        //         *(et + 1) = '\0';
-        //         break;
-        //     }
-        // }
     }
 
     unsigned lines = 0;
@@ -237,7 +231,7 @@ const char* extractPosInString(
     static char buffer[4096];
     auto len = end != INVALID ? end - start : 0;
     auto size = std::min(
-        end != INVALID ? len : data.length() - start + 1, sizeof(buffer));
+        end != INVALID ? len + 1 : data.length() - start + 1, sizeof(buffer));
     std::copy(data.data() + start, data.data() + start + size, buffer);
     return extractPos(buffer, len, size, skip);
 }

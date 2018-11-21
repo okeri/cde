@@ -285,13 +285,14 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
         uint32_t* line = nullptr);
 
     template <class P, class D>
-    std::pair<P*, unsigned> lookupParentSourceRange(D* node) {
+    std::pair<P*, unsigned> lookupParentSourceRange(
+        D* node, unsigned level = 0) {
         auto& context = node->getASTContext();
         auto parents = context.getParents(*node);
         const ast_type_traits::DynTypedNode* parent;
         std::pair<P*, unsigned> result = {nullptr, 0};
 
-        while (!parents.empty()) {
+        while (!parents.empty() && (level == 0 || result.second < level)) {
             parent = parents.begin();
             result.first = parent->template get<P>();
             result.second++;
@@ -392,10 +393,19 @@ class CDEIndex::Impl final : public RecursiveASTVisitor<CDEIndex::Impl> {
                     getParentSourceRangeOrSelf<const DeclStmt>(decl));
                 break;
 
+            case Decl::Var:
+                if (auto stmt = lookupParentSourceRange<const DeclStmt>(decl);
+                    stmt.first) {
+                    record(locRef, locDef, stmt.first->getSourceRange());
+                } else {
+                    record(locRef, locDef,
+                        SourceRange(decl->getLocStart(), SourceLocation()));
+                }
+                break;
+
             case Decl::Typedef:
             case Decl::EnumConstant:
             case Decl::Field:
-            case Decl::Var:
                 record(locRef, locDef,
                     SourceRange(decl->getLocStart(), SourceLocation()));
                 break;
