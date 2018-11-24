@@ -747,9 +747,11 @@ bool CDEIndex::Impl::VisitDecl(Decl* declaration) {
 
 void CDEIndex::Impl::preprocess(uint32_t fid) {
     auto [tu, unit] = getParsedTU(fid);
-    preprocessTUforFile(unit, fid, true);
-    handleDiagnostics(tu, unit->getMainFileName(), unit->stored_diag_begin(),
-        unit->stored_diag_end(), false);
+    if (unit != nullptr) {
+        preprocessTUforFile(unit, fid, true);
+        handleDiagnostics(tu, unit->getMainFileName(),
+            unit->stored_diag_begin(), unit->stored_diag_end(), false);
+    }
 }
 
 uint32_t CDEIndex::Impl::getAnyTU(uint32_t file) {
