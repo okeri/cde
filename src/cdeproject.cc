@@ -53,6 +53,7 @@ int BDBKeyCmp(DB*, const DBT* dbt1, const DBT* dbt2) {
 
 const char easy_file_id[] = ".clang_complete";
 const char ccj_file_id[] = "compile_commands.json";
+const char bccj_file_id[] = "build/compile_commands.json";
 
 }  // namespace
 
@@ -116,7 +117,10 @@ CDEProject::CDEProject(std::string_view projectPath, std::string_view store,
             std::istreambuf_iterator<char>());
         index_->setGlobalArgs(content);
     } else {
-        f.open(fileutil::join(projectPath, ccj_file_id));
+        f.open(fileutil::join(projectPath, bccj_file_id));
+        if (!f) {
+            f.open(fileutil::join(projectPath, ccj_file_id));
+        }
         if (f) {
             std::string content((std::istreambuf_iterator<char>(f)),
                 std::istreambuf_iterator<char>());

@@ -136,6 +136,12 @@ larger than company-idle-delay for comfort usage")
 	      (setq cde--ring (cdr cde--ring)))
       (message "Jump history is empty"))))
 
+(defun cde--suggest-compile-command()
+  (if (file-exists-p (concat cde--project "/build/build.ninja"))
+      (concat "ninja -C " cde--project "/build ")
+    (concat "make -k -C " cde--project " ")))
+  
+
 (defun cde-compile()
   "Suggest to compile of project directory"
   (interactive)
@@ -143,7 +149,7 @@ larger than company-idle-delay for comfort usage")
 	    (= (length compile-history) 0))
     (setq compile-history '("make -k ")))
   (when cde--project
-    (let ((curr (concat "make -k -C " cde--project " ")))
+    (let ((curr (cde--suggest-compile-command)))
       (unless (catch 'found
 		(dolist (v compile-history)
 		  (when (string-prefix-p curr v)
