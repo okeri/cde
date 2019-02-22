@@ -22,11 +22,12 @@
 
 template <typename Pred>
 void strBreak(std::string_view input, Pred handler, const size_t start = 0,
-              const size_t endpoint = std::string_view::npos) {
+    const size_t endpoint = std::string_view::npos) {
     std::string_view::iterator tail = input.begin() + start,
-            end = endpoint == std::string_view::npos ?
-            input.end() : input.begin() + endpoint,
-            head = end;
+                               end = endpoint == std::string_view::npos
+                                         ? input.end()
+                                         : input.begin() + endpoint,
+                               head = end;
     for (; tail < end; ++tail) {
         if (isgraph(*tail)) {
             if (head == end) {
@@ -41,5 +42,7 @@ void strBreak(std::string_view input, Pred handler, const size_t start = 0,
             }
         }
     }
-    handler(head, tail);
+    if (head != end) {
+        handler(head, tail);
+    }
 }
