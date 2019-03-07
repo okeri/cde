@@ -201,7 +201,7 @@ void CDEProject::info(std::string_view filename, uint32_t pos) {
         if (def.declValid()) {
             auto filename = index_->fileName(def.file);
             const auto& mapped = EmacsMapper::mapped();
-            const char* result;
+            std::string result;
             if (auto found = mapped.find(filename); found != mapped.end()) {
                 result = fileutil::extractPosInString(found->second.first,
                     def.declBegin, def.declEnd, def.pos - def.declBegin);
@@ -209,6 +209,15 @@ void CDEProject::info(std::string_view filename, uint32_t pos) {
                 result = fileutil::extractPosInFile(filename, def.declBegin,
                     def.declEnd, def.pos - def.declBegin);
             }
+            auto replace = [](std::string& str, const std::string& from,
+                               const std::string& to) {
+                size_t start = 0;
+                while ((start = str.find(from, start)) != std::string::npos) {
+                    str.replace(start, from.length(), to);
+                    start += to.length();
+                }
+            };
+            replace(result, "%", "%%");
             std::cout << "(message " << std::quoted(result) << ")" << std::endl;
         }
     }
